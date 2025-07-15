@@ -259,31 +259,15 @@ if __name__ == "__main__":
     script_dir = os.path.dirname(__file__)
     parser = argparse.ArgumentParser(description="Train CLASP")
 
-    # arg parsing
-    parser.add_argument("--aas_embeddings_path", type=str, required=True)
-    parser.add_argument("--desc_embeddings_path", type=str, required=True)
+    # required args
+    parser.add_argument("--aas_embeddings_file", type=str, required=True)
+    parser.add_argument("--desc_embeddings_file", type=str, required=True)
     parser.add_argument("--preprocessed_pdb_file", type=str, required=True)
-    parser.add_argument(
-        "--train_file_paths",
-        type=str,
-        nargs="+",
-        required=True,
-        help="List of training pair JSONL files",
-    )
-    parser.add_argument("--val_file_path", type=str, required=True)
-    parser.add_argument(
-        "--checkpoint_dir", type=str, default="checkpoints/clasp_training"
-    )
-    parser.add_argument(
-        "--final_alignment_module_path",
-        type=str,
-        default="final_models/clasp_alignment.pt",
-    )
-    parser.add_argument(
-        "--final_encoder_module_path",
-        type=str,
-        default="final_models/clasp_pdb_encoder.pt",
-    )
+    parser.add_argument("--processed_data_dir", type=str, required=True)
+
+    # optional args
+    parser.add_argument("--checkpoint_dir", type=str, default="checkpoints")
+    parser.add_argument("--output_dir", type=str, default="final_models")
     parser.add_argument(
         "--seed", type=int, default=42, help="Random seed for reproducibility"
     )
@@ -293,40 +277,61 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # destructure args
-
     # check if paths exist
-    if not os.path.exists(args.aas_embeddings_path):
+    if not os.path.exists(args.aas_embeddings_file):
         raise FileNotFoundError(
-            f"Amino acid embeddings file not found: {args.aas_embeddings_path}"
+            f"Amino acid embeddings file not found: {args.aas_embeddings_file}"
         )
-    if not os.path.exists(args.desc_embeddings_path):
+    if not os.path.exists(args.desc_embeddings_file):
         raise FileNotFoundError(
-            f"Descriptor embeddings file not found: {args.desc_embeddings_path}"
+            f"Descriptor embeddings file not found: {args.desc_embeddings_file}"
         )
     if not os.path.exists(args.preprocessed_pdb_file):
         raise FileNotFoundError(
             f"Preprocessed PDB file not found: {args.preprocessed_pdb_file}"
         )
-    for train_file_path in args.train_file_paths:
+
+    if not os.path.exists(args.processed_data_dir):
+        raise FileNotFoundError(
+            f"Processed data directory not found: {args.processed_data_dir}"
+        )
+
+    train_file_paths = [
+        os.path.join(args.processed_data_dir, f"train_pairs_{letter}.jsonl")
+        for letter in ["a", "b", "c", "d", "e"]
+    ]
+    val_file_path = os.path.join(args.processed_data_dir, "val_pairs.jsonl")
+
+    for train_file_path in train_file_paths:
         if not os.path.exists(train_file_path):
             raise FileNotFoundError(f"Training file not found: {train_file_path}")
-    if not os.path.exists(args.val_file_path):
-        raise FileNotFoundError(f"Validation file not found: {args.val_file_path}")
+    if not os.path.exists(val_file_path):
+        raise FileNotFoundError(f"Validation file not found: {val_file_path}")
 
+    # create output directories if they do not exist
     os.makedirs(args.checkpoint_dir, exist_ok=True)
-    os.makedirs(os.path.dirname(args.final_alignment_module_path), exist_ok=True)
-    os.makedirs(os.path.dirname(args.final_encoder_module_path), exist_ok=True)
+    os.makedirs(args.output_dir, exist_ok=True)
+    checkpoint_dir = args.checkpoint_dir
+    final_encoder_module_path = os.path.join(args.output_dir, "final_pdb_encoder.pt")
+    final_alignment_module_path = os.path.join(args.output_dir, "final_alignment.pt")
+
+    # set device and seed
+    if args.device not in ["cpu", "cuda"]:
+        raise ValueError("Device must be 'cpu' or 'cuda'")
+    if args.device == "cuda" and not torch.cuda.is_available():
+        raise ValueError("CUDA is not available on this machine, use 'cpu' instead")
+    device = torch.device(args.device)
+    seed = args.seed
 
     # ensure data is in correct format
     try:
-        with h5py.File(args.aas_embeddings_path, "r") as f:
+        with h5py.File(args.aas_embeddings_file, "r") as f:
             amino_acid_embeddings = {k: f[k][()] for k in f.keys()}
     except Exception as e:
         raise ValueError(f"Error loading amino acid embeddings: {e}")
 
     try:
-        with h5py.File(args.desc_embeddings_path, "r") as f:
+        with h5py.File(args.desc_embeddings_file, "r") as f:
             desc_embeddings = {k: f[k][()] for k in f.keys()}
     except Exception as e:
         raise ValueError(f"Error loading descriptor embeddings: {e}")
@@ -337,24 +342,15 @@ if __name__ == "__main__":
         raise ValueError(f"Error loading preprocessed PDB file: {e}")
 
     try:
-        train_file_paths = [os.path.abspath(path) for path in args.train_file_paths]
         for train_file_path in train_file_paths:
             train_pairs = load_pairs(train_file_path)
     except Exception as e:
         raise ValueError(f"Error loading training pairs: {e}")
 
     try:
-        val_pairs = load_pairs(args.val_file_path)
+        val_pairs = load_pairs(val_file_path)
     except Exception as e:
         raise ValueError(f"Error loading validation pairs: {e}")
-
-    # set device and seed
-    if args.device not in ["cpu", "cuda"]:
-        raise ValueError("Device must be 'cpu' or 'cuda'")
-    if args.device == "cuda" and not torch.cuda.is_available():
-        raise ValueError("CUDA is not available on this machine, use 'cpu' instead")
-    device = torch.device(args.device)
-    seed = args.seed
 
     # init encoder
     pdb_encoder = CLASPEncoder(
@@ -362,6 +358,7 @@ if __name__ == "__main__":
     ).to(device)
     pdb_encoder.eval()
 
+    # call training function
     train_clasp(
         seed,
         amino_acid_embeddings,
@@ -370,8 +367,8 @@ if __name__ == "__main__":
         train_file_paths,
         val_pairs,
         pdb_encoder,
-        args.checkpoint_dir,
-        args.final_encoder_module_path,
-        args.final_alignment_module_path,
+        checkpoint_dir,
+        final_encoder_module_path,
+        final_alignment_module_path,
         device,
     )

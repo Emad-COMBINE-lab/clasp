@@ -1,4 +1,6 @@
 # data
 data
+data_draft
 pdbs
-
+__pycache__
+.DS_Store
