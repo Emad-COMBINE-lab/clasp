@@ -312,8 +312,8 @@ if __name__ == "__main__":
     os.makedirs(args.checkpoint_dir, exist_ok=True)
     os.makedirs(args.output_dir, exist_ok=True)
     checkpoint_dir = args.checkpoint_dir
-    final_encoder_module_path = os.path.join(args.output_dir, "final_pdb_encoder.pt")
-    final_alignment_module_path = os.path.join(args.output_dir, "final_alignment.pt")
+    final_encoder_module_path = os.path.join(args.output_dir, "clasp_pdb_encoder.pt")
+    final_alignment_module_path = os.path.join(args.output_dir, "clasp_alignment.pt")
 
     # set device and seed
     if args.device not in ["cpu", "cuda"]:
