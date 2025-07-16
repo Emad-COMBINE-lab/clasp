@@ -7,9 +7,9 @@ pip install torch-scatter -f https://data.pyg.org/whl/torch-2.6.0+cu122.html
 
 # TO DO LIST IN REPO
 
-Code
+Code first pass
 - [x] Preprocessing scripts
-- [ ] Training script
+- [x] Training script
 - [ ] Sim matrix + emb script
 - [ ] Quick sim script
 - [ ] Retreval script
@@ -23,3 +23,11 @@ Admin / docs
 - [ ] Quick_sim.md
 - [ ] Retrieval.md
 - [ ] Upload_data.md
+
+Code final pass
+- [ ] Preprocessing scripts
+- [ ] Training script
+- [ ] Sim matrix + emb script
+- [ ] Quick sim script
+- [ ] Retreval script
+- [ ] Download script

@@ -5,18 +5,60 @@ import torch
 from models import CLASPAlignment, CLASPEncoder
 from utils import create_clip_model_with_random_weights
 import json
-
 import math
 from pathlib import Path
 import torch
 
 
 def _stack_in_order(ids, emb_dict, device):
-    """Utility: stack embeddings following the given order."""
+    """
+    Utility: stack embeddings following the given order.
+    """
     missing = [i for i in ids if i not in emb_dict]
     if missing:
         raise KeyError(f"Missing embeddings for ids: {missing[:5]} …")
     return torch.stack([torch.as_tensor(emb_dict[i]) for i in ids]).to(device)
+
+
+"""
+class TriModalDataset(Dataset):
+    def __init__(self, pairs, amino_acid_embeddings, desc_embeddings, pdb_data, device):
+        self.pairs = pairs
+        self.amino_acid_embeddings = amino_acid_embeddings
+        self.desc_embeddings = desc_embeddings
+        self.pdb_data = pdb_data
+        self.device = device
+
+    def __len__(self):
+        return len(self.pairs)
+
+    def __getitem__(self, idx):
+        upkb_ac, pdb_id = self.pairs[idx]
+
+        if (
+            upkb_ac not in self.amino_acid_embeddings
+            or upkb_ac not in self.desc_embeddings
+        ):
+            return None
+
+        amino_ac_embedding = torch.tensor(
+            self.amino_acid_embeddings[upkb_ac], dtype=torch.float32
+        ).to(self.device)
+
+        desc_embedding = torch.tensor(
+            self.desc_embeddings[upkb_ac], dtype=torch.float32
+        ).to(self.device)
+
+        pdb_data_item = self.pdb_data.get(pdb_id)
+
+        if pdb_data_item is None:
+            return None
+
+        pdb_data_item = pdb_data_item.to(self.device)
+
+        return amino_ac_embedding, desc_embedding, pdb_data_item
+
+"""
 
 
 def generate_similarity_matrices(
@@ -35,68 +77,109 @@ def generate_similarity_matrices(
     device,
 ):
     """
-    Generate matrices
+    Encode + project structures, sequences, and descriptions; optionally save
+    similarity matrices. Encodes PDB graphs one at a time (safe path).
     """
-    pdb_batch_size = 64
+    outdir = Path(output_dir)
+    outdir.mkdir(parents=True, exist_ok=True)
 
     with torch.no_grad():
-        # Projected PDB embeddings
-        if len(ordered_pbd_ids) != 0:
-            proj_pdb_chunks = []
-            n_batches = math.ceil(len(ordered_pbd_ids) / pdb_batch_size)
-            for b in range(n_batches):
-                batch_ids = ordered_pbd_ids[
-                    b * pdb_batch_size : (b + 1) * pdb_batch_size
-                ]
-                batch_graphs = {
-                    pid: pdb_data[pid].to(device)
-                    for pid in batch_ids
-                    if pid in pdb_data
-                }
-                if len(batch_graphs) != len(batch_ids):
-                    missing = set(batch_ids) - batch_graphs.keys()
-                    raise KeyError(f"PDB graphs missing for ids: {missing}")
-                pdb_embs = pdb_encoder(batch_graphs)
-                proj_pdb = alignment_model.get_pdb_projection(pdb_embs)
-                proj_pdb_chunks.append(proj_pdb)
-            pdb_proj = torch.cat(proj_pdb_chunks, dim=0)
+        # PDBs
+        pdb_proj_embs = []
+        if ordered_pbd_ids:
+            for pdb_id in ordered_pbd_ids:
+                pdb_data_item = pdb_data.get(pdb_id)
+                if pdb_data_item is None:
+                    raise KeyError(f"PDB data missing for id: {pdb_id}")
+                pdb_data_item = pdb_data_item.to(device)
+                pdb_emb = pdb_encoder(pdb_data_item)
+                pdb_emb_tensor = torch.tensor(pdb_emb, dtype=torch.float32).to(device)
+                projected_embedding = alignment_model.get_pdb_projection(pdb_emb_tensor)
+                pdb_proj_embs.append(projected_embedding)
 
-        # Projected AAS embeddings
-        if len(ordered_aas_ids) != 0:
-            aas_raw = _stack_in_order(ordered_aas_ids, aas_embeddings, device)
-            aas_proj = alignment_model.get_aas_projection(aas_raw)
+        # AASs
+        aas_proj_embs = []
+        if ordered_aas_ids:
+            for aas_id in ordered_aas_ids:
+                aas_raw_emb = aas_embeddings.get(aas_id)
+                if aas_raw_emb is None:
+                    raise KeyError(f"Amino acid embedding missing for id: {aas_id}")
+                aas_raw_emb_tensor = torch.tensor(aas_raw_emb, dtype=torch.float32).to(
+                    device
+                )
+                aas_proj_emb = alignment_model.get_aas_projection(aas_raw_emb_tensor)
+                aas_proj_embs.append(aas_proj_emb)
 
-        # Projected descriptor embeddings
-        if len(ordered_desc_ids) != 0:
-            desc_raw = _stack_in_order(ordered_desc_ids, desc_embeddings, device)
-            desc_proj = alignment_model.get_desc_projection(desc_raw)
+        # DESCs
+        desc_proj_embs = []
+        if ordered_desc_ids:
+            for desc_id in ordered_desc_ids:
+                desc_raw_emb = desc_embeddings.get(desc_id)
+                if desc_raw_emb is None:
+                    raise KeyError(f"Description embedding missing for id: {desc_id}")
+                desc_raw_emb_tensor = torch.tensor(
+                    desc_raw_emb, dtype=torch.float32
+                ).to(device)
+                desc_proj_emb = alignment_model.get_desc_projection(desc_raw_emb_tensor)
+                desc_proj_embs.append(desc_proj_emb)
 
-        # Save projections
-        torch.save(pdb_proj.cpu(), Path(output_dir) / "pdb_proj.pt")
-        torch.save(aas_proj.cpu(), Path(output_dir) / "aas_proj.pt")
-        torch.save(desc_proj.cpu(), Path(output_dir) / "desc_proj.pt")
+        # HERE
 
-        # Compute & store similarity matrices
-        if structure_to_sequence_matrix:
-            sim_pdb_aas = pdb_proj @ aas_proj.T  # (Np, Na)
-            torch.save(
-                sim_pdb_aas.cpu(),
-                Path(output_dir) / "structure_to_sequence.pt",
-            )
+        def _collapse_proj_list(tlist, name):
+            """Stack list of proj tensors to shape (N,D) or return None if empty."""
+            if not tlist:
+                return None
+            # standardize each tensor: squeeze all singleton dims to 1D, then unsqueeze(0)
+            normed = []
+            for t in tlist:
+                if not torch.is_tensor(t):
+                    t = torch.as_tensor(t, device=device, dtype=torch.float32)
+                t = t.to(device)
+                t = t.squeeze()  # drop all 1‑sz dims -> (D,)
+                if t.dim() != 1:
+                    raise RuntimeError(
+                        f"{name}: expected 1D after squeeze, got {t.shape}"
+                    )
+                normed.append(t.unsqueeze(0))  # (1,D)
+            return torch.cat(normed, dim=0)  # (N,D)
 
-        if structure_to_description_matrix:
-            sim_pdb_desc = pdb_proj @ desc_proj.T  # (Np, Nd)
-            torch.save(
-                sim_pdb_desc.cpu(),
-                Path(output_dir) / "structure_to_description.pt",
-            )
+        pdb_proj = _collapse_proj_list(pdb_proj_embs, "pdb_proj")
+        aas_proj = _collapse_proj_list(aas_proj_embs, "aas_proj")
+        desc_proj = _collapse_proj_list(desc_proj_embs, "desc_proj")
+        print(
+            f"Generated projections: "
+            f"pdb_proj={pdb_proj.shape if pdb_proj is not None else 'None'}, "
+            f"aas_proj={aas_proj.shape if aas_proj is not None else 'None'}, "
+            f"desc_proj={desc_proj.shape if desc_proj is not None else 'None'}"
+        )
 
-        if sequence_to_description_matrix:
-            sim_aas_desc = aas_proj @ desc_proj.T  # (Na, Nd)
-            torch.save(
-                sim_aas_desc.cpu(),
-                Path(output_dir) / "sequence_to_description.pt",
-            )
+        # ----- Similarity matrices -----
+        if (
+            structure_to_sequence_matrix
+            and (pdb_proj is not None)
+            and (aas_proj is not None)
+        ):
+            sim_pdb_aas = pdb_proj @ aas_proj.T  # (Np,Na)
+            print(f"Generated similarity matrix: sim_pdb_aas={sim_pdb_aas.shape}")
+            torch.save(sim_pdb_aas.cpu(), outdir / "structure_to_sequence.pt")
+
+        if (
+            structure_to_description_matrix
+            and (pdb_proj is not None)
+            and (desc_proj is not None)
+        ):
+            sim_pdb_desc = pdb_proj @ desc_proj.T  # (Np,Nd)
+            print(f"Generated similarity matrix: sim_pdb_desc={sim_pdb_desc.shape}")
+            torch.save(sim_pdb_desc.cpu(), outdir / "structure_to_description.pt")
+
+        if (
+            sequence_to_description_matrix
+            and (aas_proj is not None)
+            and (desc_proj is not None)
+        ):
+            sim_aas_desc = aas_proj @ desc_proj.T  # (Na,Nd)
+            print(f"Generated similarity matrix: sim_aas_desc={sim_aas_desc.shape}")
+            torch.save(sim_aas_desc.cpu(), outdir / "sequence_to_description.pt")
 
 
 if __name__ == "__main__":
@@ -169,18 +252,21 @@ if __name__ == "__main__":
     # ensure data is in correct format
     try:
         with h5py.File(args.aas_embeddings_file, "r") as f:
+            print("Loading amino acid embeddings...")
             amino_acid_embeddings = {k: f[k][()] for k in f.keys()}
     except Exception as e:
         raise ValueError(f"Error loading amino acid embeddings: {e}")
 
     try:
         with h5py.File(args.desc_embeddings_file, "r") as f:
+            print("Loading descriptor embeddings...")
             desc_embeddings = {k: f[k][()] for k in f.keys()}
     except Exception as e:
         raise ValueError(f"Error loading descriptor embeddings: {e}")
 
     try:
-        pdb_data = torch.load(args.preprocessed_pdb_file)
+        print("Loading preprocessed PDB data...")
+        pdb_data = torch.load(args.preprocessed_pdb_file, weights_only=False)
     except Exception as e:
         raise ValueError(f"Error loading preprocessed PDB file: {e}")
 
