@@ -1,5 +1,7 @@
-conda create -n claspenv python=3.10
+conda env create -f environment.yml
 conda activate claspenv
+pip install torch-scatter -f https://data.pyg.org/whl/torch-2.6.0+cpu.html
+
 
 # TO DO LIST IN REPO
 

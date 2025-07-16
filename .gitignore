@@ -5,3 +5,4 @@ pdbs
 __pycache__
 .DS_Store
 final_models
+checkpoints
