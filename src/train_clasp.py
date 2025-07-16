@@ -325,19 +325,22 @@ if __name__ == "__main__":
 
     # ensure data is in correct format
     try:
+        print("Loading amino acid embeddings...")
         with h5py.File(args.aas_embeddings_file, "r") as f:
             amino_acid_embeddings = {k: f[k][()] for k in f.keys()}
     except Exception as e:
         raise ValueError(f"Error loading amino acid embeddings: {e}")
 
     try:
+        print("Loading descriptor embeddings...")
         with h5py.File(args.desc_embeddings_file, "r") as f:
             desc_embeddings = {k: f[k][()] for k in f.keys()}
     except Exception as e:
         raise ValueError(f"Error loading descriptor embeddings: {e}")
 
     try:
-        pdb_data = torch.load(args.preprocessed_pdb_file)
+        print("Loading preprocessed PDB data...")
+        pdb_data = torch.load(args.preprocessed_pdb_file, weights_only=False)
     except Exception as e:
         raise ValueError(f"Error loading preprocessed PDB file: {e}")
 
