@@ -10,57 +10,6 @@ from pathlib import Path
 import torch
 
 
-def _stack_in_order(ids, emb_dict, device):
-    """
-    Utility: stack embeddings following the given order.
-    """
-    missing = [i for i in ids if i not in emb_dict]
-    if missing:
-        raise KeyError(f"Missing embeddings for ids: {missing[:5]} …")
-    return torch.stack([torch.as_tensor(emb_dict[i]) for i in ids]).to(device)
-
-
-"""
-class TriModalDataset(Dataset):
-    def __init__(self, pairs, amino_acid_embeddings, desc_embeddings, pdb_data, device):
-        self.pairs = pairs
-        self.amino_acid_embeddings = amino_acid_embeddings
-        self.desc_embeddings = desc_embeddings
-        self.pdb_data = pdb_data
-        self.device = device
-
-    def __len__(self):
-        return len(self.pairs)
-
-    def __getitem__(self, idx):
-        upkb_ac, pdb_id = self.pairs[idx]
-
-        if (
-            upkb_ac not in self.amino_acid_embeddings
-            or upkb_ac not in self.desc_embeddings
-        ):
-            return None
-
-        amino_ac_embedding = torch.tensor(
-            self.amino_acid_embeddings[upkb_ac], dtype=torch.float32
-        ).to(self.device)
-
-        desc_embedding = torch.tensor(
-            self.desc_embeddings[upkb_ac], dtype=torch.float32
-        ).to(self.device)
-
-        pdb_data_item = self.pdb_data.get(pdb_id)
-
-        if pdb_data_item is None:
-            return None
-
-        pdb_data_item = pdb_data_item.to(self.device)
-
-        return amino_ac_embedding, desc_embedding, pdb_data_item
-
-"""
-
-
 def generate_similarity_matrices(
     aas_embeddings,
     desc_embeddings,
@@ -122,8 +71,6 @@ def generate_similarity_matrices(
                 ).to(device)
                 desc_proj_emb = alignment_model.get_desc_projection(desc_raw_emb_tensor)
                 desc_proj_embs.append(desc_proj_emb)
-
-        # HERE
 
         def _collapse_proj_list(tlist, name):
             """Stack list of proj tensors to shape (N,D) or return None if empty."""
@@ -204,9 +151,6 @@ if __name__ == "__main__":
     parser.add_argument("--output_dir", type=str, default="output")
 
     parser.add_argument(
-        "--seed", type=int, default=42, help="Random seed for reproducibility"
-    )
-    parser.add_argument(
         "--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu"
     )
 
@@ -241,13 +185,12 @@ if __name__ == "__main__":
     os.makedirs(args.output_dir, exist_ok=True)
     output_dir = args.output_dir
 
-    # set device and seed
+    # set device
     if args.device not in ["cpu", "cuda"]:
         raise ValueError("Device must be 'cpu' or 'cuda'")
     if args.device == "cuda" and not torch.cuda.is_available():
         raise ValueError("CUDA is not available on this machine, use 'cpu' instead")
     device = torch.device(args.device)
-    seed = args.seed
 
     # ensure data is in correct format
     try:
