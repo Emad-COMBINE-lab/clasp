@@ -198,11 +198,10 @@ if __name__ == "__main__":
     except Exception as e:
         raise ValueError(f"Error loading PDB mapping data: {e}")
 
-    # output directory
+    # output file
     processed_pdb_data_file = args.output_file
     if not processed_pdb_data_file.endswith(".pt"):
         raise ValueError("Output file must have a .pt extension")
-    os.makedirs(os.path.dirname(processed_pdb_data_file), exist_ok=True)
 
     # check pdb_data_dir
     if args.use_pdb_dir:
