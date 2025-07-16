@@ -149,7 +149,6 @@ def train_clasp(
                 logits_aas_desc,
                 logits_pdb_aas,
                 logits_aas_pdb,
-                clip_model=model_3dclip.clip_model,
                 encoder_model=pdb_encoder,
             )
 
@@ -195,7 +194,6 @@ def train_clasp(
                     logits_aas_desc,
                     logits_pdb_aas,
                     logits_aas_pdb,
-                    clip_model=model_3dclip.clip_model,
                     encoder_model=pdb_encoder,
                 )
 
