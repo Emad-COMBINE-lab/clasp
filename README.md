@@ -18,7 +18,6 @@
 
 **CLASP** is a tri-modal contrastive learning framework for unified representation of protein structure, sequence, and description. It enables downstream applications such as cross-modal retrieval, similarity scoring, and zero-shot classification by learning a shared embedding space across all three modalities.
 
----
 
 ## Table of contents
 1. [Overview of the CLASP framework](#overview-of-the-clasp-framework) 
@@ -27,7 +26,6 @@
 4. [Documentation and usage](#documentation-and-usage)
 5. [Citation](#citation)
 
----
 ## Overview of the CLASP framework
 
 CLASP (Contrastive Learning of Amino acid, Structure, and Protein description) is a tri-modal contrastive learning framework designed to unify protein structure (as PDB files), amino acid sequence, and natural language description into a shared embedding space. By learning aligned representations across these biologically complementary views, CLASP supports downstream applications such as cross-modal retrieval, similarity scoring, and zero-shot classification without requiring task-specific supervision.
@@ -39,7 +37,6 @@ Each modality is first encoded independently: protein structures are converted i
 </p>
 
 
----
 
 ## Repository structure
 
@@ -64,13 +61,11 @@ CLASP/
 └── README.md      
 ```        
 
----
 
 ## Environment setup
 
 TBD
 
----
 
 ## Documentation and usage
 
@@ -80,7 +75,6 @@ TBD
 | [`train_clasp.md`](docs/train_clasp.md)                 | Training setup and script usage                |
 | [`inference_utilities.md`](docs/inference_utilities.md) | Inference and retrieval utilities              |
 
----
 
 ## Citation
 
