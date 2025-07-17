@@ -77,10 +77,7 @@ This repository provides a set of utilities and scripts for preparing data, trai
 | [`compute_similarity_matrices.py`](src/compute_similarity_matrices.py)         | Computes projected embeddings and similarity matrices between structure, sequence, and description | [`inference_utilities.md`](docs/inference_utilities.md) |
 | [`get_quick_similarity_scores.py`](src/get_quick_similarity_scores.py)         | Prints similarity scores for a single triplet (structure, sequence, description)                   | [`inference_utilities.md`](docs/inference_utilities.md) |
 | [`rank_amino_acids_by_description.py`](src/rank_amino_acids_by_description.py) | Ranks amino acid sequences based on a natural language query                                       | [`inference_utilities.md`](docs/inference_utilities.md) |
-| [`train_clasp.py`](src/train_clasp.py)                                               | Main training script for learning a tri-modal embedding space                                      | [`train_clasp.md`](docs/train_clasp.md)                 |
-
----
-
+| [`train_clasp.py`](src/train_clasp.py)                                               | Main training script for CLASP                                      | [`train_clasp.md`](docs/train_clasp.md)                 |
 
 ## Citation
 
