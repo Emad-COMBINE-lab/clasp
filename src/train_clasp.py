@@ -1,100 +1,101 @@
-import os
+import argparse
+import random
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
 import torch
-from torch.utils.data import DataLoader
+import h5py
+from torch.utils.data import Dataset, DataLoader
+
 from models import CLASPAlignment, CLASPLoss, CLASPEncoder
 from utils import (
     load_pairs,
     pair_3modal_collate_fn,
     create_clip_model_with_random_weights,
 )
-from torch.utils.data import Dataset
-import random
-import h5py
-import argparse
 
 
 class TriModalDataset(Dataset):
-    def __init__(self, pairs, amino_acid_embeddings, desc_embeddings, pdb_data, device):
+    """
+    Dataset yielding (amino_acid, description, pdb_graph) triples.
+    """
+
+    def __init__(
+        self,
+        pairs: List[Tuple[str, str]],
+        aa_embeddings: Dict[str, Any],
+        desc_embeddings: Dict[str, Any],
+        pdb_data: Dict[str, torch.Tensor],
+        device: torch.device,
+    ) -> None:
         self.pairs = pairs
-        self.amino_acid_embeddings = amino_acid_embeddings
+        self.aa_embeddings = aa_embeddings
         self.desc_embeddings = desc_embeddings
         self.pdb_data = pdb_data
         self.device = device
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.pairs)
 
-    def __getitem__(self, idx):
+    def __getitem__(
+        self, idx: int
+    ) -> Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
         upkb_ac, pdb_id = self.pairs[idx]
 
-        if (
-            upkb_ac not in self.amino_acid_embeddings
-            or upkb_ac not in self.desc_embeddings
-        ):
+        aa_emb = self.aa_embeddings.get(upkb_ac)
+        desc_emb = self.desc_embeddings.get(upkb_ac)
+        pdb_item = self.pdb_data.get(pdb_id)
+
+        if aa_emb is None or desc_emb is None or pdb_item is None:
             return None
 
-        amino_ac_embedding = torch.tensor(
-            self.amino_acid_embeddings[upkb_ac], dtype=torch.float32
-        ).to(self.device)
+        amino_acid_tensor = torch.tensor(aa_emb, dtype=torch.float32).to(self.device)
+        desc_tensor = torch.tensor(desc_emb, dtype=torch.float32).to(self.device)
+        pdb_tensor = pdb_item.to(self.device)
 
-        desc_embedding = torch.tensor(
-            self.desc_embeddings[upkb_ac], dtype=torch.float32
-        ).to(self.device)
-
-        pdb_data_item = self.pdb_data.get(pdb_id)
-
-        if pdb_data_item is None:
-            return None
-
-        pdb_data_item = pdb_data_item.to(self.device)
-
-        return amino_ac_embedding, desc_embedding, pdb_data_item
+        return amino_acid_tensor, desc_tensor, pdb_tensor
 
 
 def train_clasp(
-    seed,
-    amino_acid_embeddings,
-    desc_embeddings,
-    pdb_data,
-    train_file_paths,
-    val_pairs,
-    pdb_encoder,
-    checkpoint_dir,
-    final_encoder_path,
-    final_3dclip_path,
-    device,
-):
+    seed: int,
+    aa_embeddings: Dict[str, Any],
+    desc_embeddings: Dict[str, Any],
+    pdb_data: Dict[str, torch.Tensor],
+    train_files: List[Path],
+    val_pairs: List[Tuple[str, str]],
+    pdb_encoder: CLASPEncoder,
+    checkpoint_dir: Path,
+    final_encoder_path: Path,
+    final_alignment_path: Path,
+    device: torch.device,
+) -> Tuple[CLASPAlignment, CLASPEncoder, List[float], List[float]]:
     """
-    Training function for 3D CLIP model with tri-modal contrastive learning for a specific seed.
+    Train the CLASP alignment model with tri‑modal contrastive loss.
+    Returns the trained alignment model, encoder, and loss histories.
     """
     random.seed(seed)
     torch.manual_seed(seed)
 
-    # training params
-    num_epochs = 500
+    # hyperparameters
+    num_epochs = 2
     batch_size = 8
-    learning_rate = 0.001
+    lr = 1e-3
     patience = 40
-    best_val_loss = float("inf")
-    epochs_without_improvement = 0
 
-    # init models
+    # models
     clip_model = create_clip_model_with_random_weights("ViT-B/32", device=device)
-    model_3dclip = CLASPAlignment(clip_model, embed_dim=512).to(device)
+    model = CLASPAlignment(clip_model, embed_dim=512).to(device)
     criterion = CLASPLoss(temperature=0.07, l2_lambda=0.01)
-
-    # optimizer and scheduler
     optimizer = torch.optim.Adam(
-        list(model_3dclip.parameters()) + list(pdb_encoder.parameters()),
-        lr=learning_rate,
+        list(model.parameters()) + list(pdb_encoder.parameters()), lr=lr
     )
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode="min", factor=0.1, patience=10
     )
 
-    # load validation data
+    # data
     val_dataset = TriModalDataset(
-        val_pairs, amino_acid_embeddings, desc_embeddings, pdb_data, device
+        val_pairs, aa_embeddings, desc_embeddings, pdb_data, device
     )
     val_loader = DataLoader(
         val_dataset,
@@ -103,273 +104,175 @@ def train_clasp(
         collate_fn=pair_3modal_collate_fn,
     )
 
-    train_losses = []
-    val_losses = []
+    best_val_loss = float("inf")
+    epochs_no_improve = 0
+    train_losses, val_losses = [], []
 
-    # train loop
-    for epoch in range(num_epochs):
-        model_3dclip.train()
+    for epoch in range(1, num_epochs + 1):
+        # training
+        model.train()
         pdb_encoder.train()
-        total_loss = 0
-        num_batches = 0
+        total_train_loss, train_batches = 0.0, 0
 
-        train_file_path = train_file_paths[epoch % len(train_file_paths)]
-        train_pairs = load_pairs(train_file_path)
-        train_dataset = TriModalDataset(
-            train_pairs, amino_acid_embeddings, desc_embeddings, pdb_data, device
-        )
+        train_path = train_files[(epoch - 1) % len(train_files)]
+        train_pairs = load_pairs(str(train_path))
         train_loader = DataLoader(
-            train_dataset,
+            TriModalDataset(
+                train_pairs, aa_embeddings, desc_embeddings, pdb_data, device
+            ),
             batch_size=batch_size,
             shuffle=True,
             collate_fn=pair_3modal_collate_fn,
         )
 
         for batch in train_loader:
-            if batch is None or len(batch) < 3 or len(batch[0]) == 0:
+            if not batch or len(batch[0]) == 0:
                 continue
-
-            amino_acid_embs, desc_embs, pdb_data_dict = batch
+            aa_t, desc_t, pdb_t = batch
             optimizer.zero_grad()
-            pdb_embeds = pdb_encoder(pdb_data_dict)
-
-            (
-                logits_pdb_aas,
-                logits_aas_pdb,
-                logits_pdb_desc,
-                logits_desc_pdb,
-                logits_aas_desc,
-                logits_desc_aas,
-            ) = model_3dclip(pdb_embeds, amino_acid_embs, desc_embs)
-
-            loss = criterion(
-                logits_desc_pdb,
-                logits_pdb_desc,
-                logits_desc_aas,
-                logits_aas_desc,
-                logits_pdb_aas,
-                logits_aas_pdb,
-                encoder_model=pdb_encoder,
-            )
-
+            pdb_emb = pdb_encoder(pdb_t)
+            logits = model(pdb_emb, aa_t, desc_t)
+            loss = criterion(*logits, encoder_model=pdb_encoder)
             loss.backward()
             optimizer.step()
 
-            total_loss += loss.item()
-            num_batches += 1
+            total_train_loss += loss.item()
+            train_batches += 1
 
-        avg_train_loss = total_loss / num_batches if num_batches > 0 else 0
-        print(
-            f"Seed {seed}: Epoch {epoch+1}/{num_epochs}, Training Loss: {avg_train_loss:.4f}"
-        )
-        train_losses.append(avg_train_loss)
+        avg_train = total_train_loss / train_batches if train_batches else 0.0
+        train_losses.append(avg_train)
+        print(f"[Seed {seed}] Epoch {epoch}/{num_epochs} — Train Loss: {avg_train:.4f}")
 
-        # val phase
-        model_3dclip.eval()
+        # validation
+        model.eval()
         pdb_encoder.eval()
-        val_loss = 0
-        val_batches = 0
+        total_val_loss, val_batches = 0.0, 0
 
         with torch.no_grad():
             for batch in val_loader:
-                if batch is None or len(batch) < 3 or len(batch[0]) == 0:
+                if not batch or len(batch[0]) == 0:
                     continue
-
-                amino_acid_embs, desc_embs, pdb_data_dict = batch
-                pdb_embeds = pdb_encoder(pdb_data_dict)
-
-                (
-                    logits_pdb_aas,
-                    logits_aas_pdb,
-                    logits_pdb_desc,
-                    logits_desc_pdb,
-                    logits_aas_desc,
-                    logits_desc_aas,
-                ) = model_3dclip(pdb_embeds, amino_acid_embs, desc_embs)
-
-                loss = criterion(
-                    logits_desc_pdb,
-                    logits_pdb_desc,
-                    logits_desc_aas,
-                    logits_aas_desc,
-                    logits_pdb_aas,
-                    logits_aas_pdb,
-                    encoder_model=pdb_encoder,
-                )
-
-                val_loss += loss.item()
+                aa_t, desc_t, pdb_t = batch
+                pdb_emb = pdb_encoder(pdb_t)
+                logits = model(pdb_emb, aa_t, desc_t)
+                loss = criterion(*logits, encoder_model=pdb_encoder)
+                total_val_loss += loss.item()
                 val_batches += 1
 
-        avg_val_loss = val_loss / val_batches if val_batches > 0 else 0
-        print(
-            f"Seed {seed}: Epoch {epoch+1}/{num_epochs}, Validation Loss: {avg_val_loss:.4f}"
-        )
-        val_losses.append(avg_val_loss)
+        avg_val = total_val_loss / val_batches if val_batches else 0.0
+        val_losses.append(avg_val)
+        print(f"[Seed {seed}] Epoch {epoch}/{num_epochs} — Val Loss:   {avg_val:.4f}")
 
-        scheduler.step(avg_val_loss)
+        scheduler.step(avg_val)
 
-        # check for improvement
-        if avg_val_loss < best_val_loss:
-            best_val_loss = avg_val_loss
-            epochs_without_improvement = 0
-
-            print(f"Seed {seed}: Validation loss improved.")
-
-            torch.save(
-                model_3dclip.state_dict(),
-                os.path.join(checkpoint_dir, "best_3dclip_model.pt"),
-            )
-            torch.save(
-                pdb_encoder.state_dict(),
-                os.path.join(checkpoint_dir, "best_pdb_encoder_model.pt"),
-            )
-            print(f"Seed {seed}: Best models saved to {checkpoint_dir}")
-
+        # save best
+        if avg_val < best_val_loss:
+            best_val_loss = avg_val
+            epochs_no_improve = 0
+            for mdl, name in [
+                (model, "best_alignment.pt"),
+                (pdb_encoder, "best_encoder.pt"),
+            ]:
+                path = checkpoint_dir / name
+                torch.save(mdl.state_dict(), path)
+            print(f"[Seed {seed}] New best model saved.")
         else:
-            epochs_without_improvement += 1
-            print(
-                f"Seed {seed}: No improvement in validation loss for {epochs_without_improvement} epoch(s)."
-            )
+            epochs_no_improve += 1
+            print(f"[Seed {seed}] No improvement for {epochs_no_improve} epochs.")
 
-        # early stopping check
-        if epochs_without_improvement >= patience:
-            print(f"Seed {seed}: Early stopping triggered.")
+        if epochs_no_improve >= patience:
+            print(f"[Seed {seed}] Early stopping.")
             break
 
-    model_3dclip.load_state_dict(
-        torch.load(os.path.join(checkpoint_dir, "best_3dclip_model.pt"))
+    # load best and save final models
+    model.load_state_dict(torch.load(checkpoint_dir / "best_alignment.pt"))
+    pdb_encoder.load_state_dict(torch.load(checkpoint_dir / "best_encoder.pt"))
+
+    torch.save(model.state_dict(), final_alignment_path)
+    torch.save(pdb_encoder.state_dict(), final_encoder_path)
+    print(
+        f"[Seed {seed}] Final models saved to {final_alignment_path} and {final_encoder_path}"
     )
-    pdb_encoder.load_state_dict(
-        torch.load(os.path.join(checkpoint_dir, "best_pdb_encoder_model.pt"))
+
+    return model, pdb_encoder, train_losses, val_losses
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Train 3D‑CLIP with tri‑modal contrastive learning"
     )
-
-    if final_3dclip_path and final_encoder_path:
-        torch.save(model_3dclip.state_dict(), final_3dclip_path)
-        torch.save(pdb_encoder.state_dict(), final_encoder_path)
-        print(
-            f"Seed {seed}: Final models saved to {final_3dclip_path} and {final_encoder_path}"
-        )
-
-    return model_3dclip, pdb_encoder, train_losses, val_losses
-
-
-if __name__ == "__main__":
-    script_dir = os.path.dirname(__file__)
-    parser = argparse.ArgumentParser(description="Train CLASP")
-
-    # required args
-    parser.add_argument("--aas_embeddings_file", type=str, required=True)
-    parser.add_argument("--desc_embeddings_file", type=str, required=True)
-    parser.add_argument("--preprocessed_pdb_file", type=str, required=True)
-    parser.add_argument("--processed_data_dir", type=str, required=True)
-
-    # optional args
-    parser.add_argument("--checkpoint_dir", type=str, default="checkpoints")
-    parser.add_argument("--output_dir", type=str, default="final_models")
+    parser.add_argument("--aas_embeddings_file", type=Path, required=True)
+    parser.add_argument("--desc_embeddings_file", type=Path, required=True)
+    parser.add_argument("--preprocessed_pdb_file", type=Path, required=True)
+    parser.add_argument("--processed_data_dir", type=Path, required=True)
+    parser.add_argument("--checkpoint_dir", type=Path, default=Path("checkpoints"))
+    parser.add_argument("--output_dir", type=Path, default=Path("final_models"))
+    parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
-        "--seed", type=int, default=42, help="Random seed for reproducibility"
+        "--device",
+        choices=["cpu", "cuda"],
+        default="cuda" if torch.cuda.is_available() else "cpu",
     )
-    parser.add_argument(
-        "--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu"
-    )
-
     args = parser.parse_args()
 
-    # check if paths exist
-    if not os.path.exists(args.aas_embeddings_file):
-        raise FileNotFoundError(
-            f"Amino acid embeddings file not found: {args.aas_embeddings_file}"
-        )
-    if not os.path.exists(args.desc_embeddings_file):
-        raise FileNotFoundError(
-            f"Descriptor embeddings file not found: {args.desc_embeddings_file}"
-        )
-    if not os.path.exists(args.preprocessed_pdb_file):
-        raise FileNotFoundError(
-            f"Preprocessed PDB file not found: {args.preprocessed_pdb_file}"
-        )
+    # validate paths
+    for path in (
+        args.aas_embeddings_file,
+        args.desc_embeddings_file,
+        args.preprocessed_pdb_file,
+        args.processed_data_dir,
+    ):
+        if not path.exists():
+            parser.error(f"Path not found: {path}")
 
-    if not os.path.exists(args.processed_data_dir):
-        raise FileNotFoundError(
-            f"Processed data directory not found: {args.processed_data_dir}"
-        )
+    args.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    train_file_paths = [
-        os.path.join(args.processed_data_dir, f"train_pairs_{letter}.jsonl")
-        for letter in ["a", "b", "c", "d", "e"]
-    ]
-    val_file_path = os.path.join(args.processed_data_dir, "val_pairs.jsonl")
-
-    for train_file_path in train_file_paths:
-        if not os.path.exists(train_file_path):
-            raise FileNotFoundError(f"Training file not found: {train_file_path}")
-    if not os.path.exists(val_file_path):
-        raise FileNotFoundError(f"Validation file not found: {val_file_path}")
-
-    # create output directories if they do not exist
-    os.makedirs(args.checkpoint_dir, exist_ok=True)
-    os.makedirs(args.output_dir, exist_ok=True)
-    checkpoint_dir = args.checkpoint_dir
-    final_encoder_module_path = os.path.join(args.output_dir, "clasp_pdb_encoder.pt")
-    final_alignment_module_path = os.path.join(args.output_dir, "clasp_alignment.pt")
-
-    # set device and seed
-    if args.device not in ["cpu", "cuda"]:
-        raise ValueError("Device must be 'cpu' or 'cuda'")
-    if args.device == "cuda" and not torch.cuda.is_available():
-        raise ValueError("CUDA is not available on this machine, use 'cpu' instead")
-    device = torch.device(args.device)
-    seed = args.seed
-
-    # ensure data is in correct format
-    try:
+    # load embeddings
+    with h5py.File(args.aas_embeddings_file, "r") as f:
         print("Loading amino acid embeddings...")
-        with h5py.File(args.aas_embeddings_file, "r") as f:
-            amino_acid_embeddings = {k: f[k][()] for k in f.keys()}
-    except Exception as e:
-        raise ValueError(f"Error loading amino acid embeddings: {e}")
+        aa_embeddings = {k: f[k][()] for k in f.keys()}
+    with h5py.File(args.desc_embeddings_file, "r") as f:
+        print("Loading description embeddings...")
+        desc_embeddings = {k: f[k][()] for k in f.keys()}
 
-    try:
-        print("Loading descriptor embeddings...")
-        with h5py.File(args.desc_embeddings_file, "r") as f:
-            desc_embeddings = {k: f[k][()] for k in f.keys()}
-    except Exception as e:
-        raise ValueError(f"Error loading descriptor embeddings: {e}")
+    # load PDB data, encoder, and data
+    print("Loading preprocessed PDB data...")
+    pdb_data = torch.load(str(args.preprocessed_pdb_file), weights_only=False)
 
-    try:
-        print("Loading preprocessed PDB data...")
-        pdb_data = torch.load(args.preprocessed_pdb_file, weights_only=False)
-    except Exception as e:
-        raise ValueError(f"Error loading preprocessed PDB file: {e}")
+    train_files = [
+        args.processed_data_dir / f"train_pairs_{c}.jsonl"
+        for c in ["a", "b", "c", "d", "e"]
+    ]
+    val_file = args.processed_data_dir / "val_pairs.jsonl"
+    for p in train_files + [val_file]:
+        if not p.exists():
+            parser.error(f"Missing file: {p}")
 
-    try:
-        for train_file_path in train_file_paths:
-            train_pairs = load_pairs(train_file_path)
-    except Exception as e:
-        raise ValueError(f"Error loading training pairs: {e}")
-
-    try:
-        val_pairs = load_pairs(val_file_path)
-    except Exception as e:
-        raise ValueError(f"Error loading validation pairs: {e}")
-
-    # init encoder
+    device = torch.device(args.device)
     pdb_encoder = CLASPEncoder(
         in_channels=7, hidden_channels=16, final_embedding_size=512, target_size=512
     ).to(device)
     pdb_encoder.eval()
 
-    # call training function
+    val_pairs = load_pairs(str(val_file))
+
+    # train the model
+    print("Starting training...")
     train_clasp(
-        seed,
-        amino_acid_embeddings,
+        args.seed,
+        aa_embeddings,
         desc_embeddings,
         pdb_data,
-        train_file_paths,
+        train_files,
         val_pairs,
         pdb_encoder,
-        checkpoint_dir,
-        final_encoder_module_path,
-        final_alignment_module_path,
+        args.checkpoint_dir,
+        args.output_dir / "clasp_pdb_encoder.pt",
+        args.output_dir / "clasp_alignment.pt",
         device,
     )
+
+
+if __name__ == "__main__":
+    main()

@@ -1,196 +1,189 @@
-import os
 import argparse
+import json
+from pathlib import Path
+from typing import Any, Dict, Optional
+
 import h5py
 import torch
+from torch import Tensor
+
 from models import CLASPAlignment, CLASPEncoder
 from utils import create_clip_model_with_random_weights
-import json
-import math
-from pathlib import Path
-import torch
 
 
 def compute_and_print_quick_similarity_scores(
-    pdb_id,
-    aas_id,
-    desc_id,
-    pdb_data,
-    aas_embeddings,
-    desc_embeddings,
-    pdb_encoder,
-    alignment_model,
-    device,
-):
+    pdb_id: Optional[str],
+    aas_id: Optional[str],
+    desc_id: Optional[str],
+    pdb_data: Dict[str, Tensor],
+    aas_embeddings: Dict[str, Any],
+    desc_embeddings: Dict[str, Any],
+    pdb_encoder: CLASPEncoder,
+    alignment_model: CLASPAlignment,
+    device: torch.device,
+) -> None:
     """
-    Compute and print quick similarity scores for debugging.
+    Compute and print quick similarity scores between one PDB, one amino-acid, and one description.
     """
-    # get projections
+
+    def project_pdb(pid: str) -> Tensor:
+        graph = pdb_data.get(pid)
+        if graph is None:
+            raise KeyError(f"PDB data missing for id: {pid}")
+        graph = graph.to(device)
+        emb = pdb_encoder(graph)
+        return alignment_model.get_pdb_projection(
+            torch.tensor(emb, dtype=torch.float32, device=device)
+        )
+
+    def project_aa(aid: str) -> Tensor:
+        raw = aas_embeddings.get(aid)
+        if raw is None:
+            raise KeyError(f"Amino acid embedding missing for id: {aid}")
+        return alignment_model.get_aas_projection(
+            torch.tensor(raw, dtype=torch.float32, device=device)
+        )
+
+    def project_desc(did: str) -> Tensor:
+        raw = desc_embeddings.get(did)
+        if raw is None:
+            raise KeyError(f"Description embedding missing for id: {did}")
+        return alignment_model.get_desc_projection(
+            torch.tensor(raw, dtype=torch.float32, device=device)
+        )
+
     with torch.no_grad():
-        # PDBs
-        pdb_proj_emb = None
-        if pdb_id is not None:
-            pdb_data_item = pdb_data.get(pdb_id)
-            if pdb_data_item is None:
-                raise KeyError(f"PDB data missing for id: {pdb_id}")
-            pdb_data_item = pdb_data_item.to(device)
-            pdb_emb = pdb_encoder(pdb_data_item)
-            pdb_emb_tensor = torch.tensor(pdb_emb, dtype=torch.float32).to(device)
-            pdb_proj_emb = alignment_model.get_pdb_projection(pdb_emb_tensor)
-
-        # AASs
-        aas_proj_emb = None
-        if aas_id is not None:
-            aas_raw_emb = aas_embeddings.get(aas_id)
-            if aas_raw_emb is None:
-                raise KeyError(f"Amino acid embedding missing for id: {aas_id}")
-            aas_raw_emb_tensor = torch.tensor(aas_raw_emb, dtype=torch.float32).to(
-                device
-            )
-            aas_proj_emb = alignment_model.get_aas_projection(aas_raw_emb_tensor)
-
-        # DESCs
-        desc_proj_emb = None
-        if desc_id is not None:
-            desc_raw_emb = desc_embeddings.get(desc_id)
-            if desc_raw_emb is None:
-                raise KeyError(f"Descriptor embedding missing for id: {desc_id}")
-            desc_raw_emb_tensor = torch.tensor(desc_raw_emb, dtype=torch.float32).to(
-                device
-            )
-            desc_proj_emb = alignment_model.get_desc_projection(desc_raw_emb_tensor)
+        pdb_proj = project_pdb(pdb_id) if pdb_id else None
+        aas_proj = project_aa(aas_id) if aas_id else None
+        desc_proj = project_desc(desc_id) if desc_id else None
 
         # PDB <> AAS
-        if pdb_proj_emb is not None and aas_proj_emb is not None:
-            sim_pdb_aas = pdb_proj_emb @ aas_proj_emb
-            print(f"Similarity score (PDB <> AAS) for {pdb_id} and {aas_id}:")
-            print(sim_pdb_aas.item())
+        if pdb_proj is not None and aas_proj is not None:
+            score = (pdb_proj @ aas_proj).item()
+            print(f"PDB–AAS similarity ({pdb_id}, {aas_id}): {score:.6f}")
         else:
-            print("Similarity score (PDB <> AAS) not computed due to missing data.")
+            print("PDB–AAS similarity not computed (missing data).")
 
         # PDB <> DESC
-        if pdb_proj_emb is not None and desc_proj_emb is not None:
-            sim_pdb_desc = pdb_proj_emb @ desc_proj_emb
-            print(f"Similarity score (PDB <> DESC) for {pdb_id} and {desc_id}:")
-            print(sim_pdb_desc.item())
+        if pdb_proj is not None and desc_proj is not None:
+            score = (pdb_proj @ desc_proj).item()
+            print(f"PDB–DESC similarity ({pdb_id}, {desc_id}): {score:.6f}")
         else:
-            print("Similarity score (PDB <> DESC) not computed due to missing data.")
+            print("PDB–DESC similarity not computed (missing data).")
 
         # AAS <> DESC
-        if aas_proj_emb is not None and desc_proj_emb is not None:
-            sim_aas_desc = aas_proj_emb @ desc_proj_emb
-            print(f"Similarity score (AAS <> DESC) for {aas_id} and {desc_id}:")
-            print(sim_aas_desc.item())
+        if aas_proj is not None and desc_proj is not None:
+            score = (aas_proj @ desc_proj).item()
+            print(f"AAS–DESC similarity ({aas_id}, {desc_id}): {score:.6f}")
         else:
-            print("Similarity score (AAS <> DESC) not computed due to missing data.")
+            print("AAS–DESC similarity not computed (missing data).")
 
 
-if __name__ == "__main__":
-    script_dir = os.path.dirname(__file__)
-    parser = argparse.ArgumentParser(description="Train CLASP")
-
-    # required args
-    parser.add_argument("--aas_embeddings_file", type=str, required=True)
-    parser.add_argument("--desc_embeddings_file", type=str, required=True)
-    parser.add_argument("--preprocessed_pdb_file", type=str, required=True)
-
-    parser.add_argument("--encoder_model_path", type=str, required=True)
-    parser.add_argument("--alignment_model_path", type=str, required=True)
-
-    # optional args
-    parser.add_argument("--pdb_id", type=str, default=None)
-    parser.add_argument("--aas_id", type=str, default=None)
-    parser.add_argument("--desc_id", type=str, default=None)
-
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Compute quick CLASP similarity scores for debugging"
+    )
     parser.add_argument(
-        "--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu"
+        "--aas_embeddings_file",
+        type=Path,
+        required=True,
+        help="HDF5 file with amino-acid embeddings",
+    )
+    parser.add_argument(
+        "--desc_embeddings_file",
+        type=Path,
+        required=True,
+        help="HDF5 file with description embeddings",
+    )
+    parser.add_argument(
+        "--preprocessed_pdb_file",
+        type=Path,
+        required=True,
+        help=".pt file with preprocessed PDB graphs",
+    )
+    parser.add_argument(
+        "--encoder_model_path",
+        type=Path,
+        required=True,
+        help="Path to CLASPEncoder state_dict",
+    )
+    parser.add_argument(
+        "--alignment_model_path",
+        type=Path,
+        required=True,
+        help="Path to CLASPAlignment state_dict",
+    )
+    parser.add_argument(
+        "--pdb_id", type=str, default=None, help="Single PDB ID to compare"
+    )
+    parser.add_argument(
+        "--aas_id", type=str, default=None, help="Single amino-acid ID to compare"
+    )
+    parser.add_argument(
+        "--desc_id", type=str, default=None, help="Single description ID to compare"
+    )
+    parser.add_argument(
+        "--device",
+        choices=["cpu", "cuda"],
+        default="cuda" if torch.cuda.is_available() else "cpu",
+        help="Compute device",
     )
 
     args = parser.parse_args()
 
-    # check if paths exist
-    if not os.path.exists(args.aas_embeddings_file):
-        raise FileNotFoundError(
-            f"Amino acid embeddings file not found: {args.aas_embeddings_file}"
-        )
-    if not os.path.exists(args.desc_embeddings_file):
-        raise FileNotFoundError(
-            f"Descriptor embeddings file not found: {args.desc_embeddings_file}"
-        )
-    if not os.path.exists(args.preprocessed_pdb_file):
-        raise FileNotFoundError(
-            f"Preprocessed PDB file not found: {args.preprocessed_pdb_file}"
-        )
+    # validate files
+    for path in (
+        args.aas_embeddings_file,
+        args.desc_embeddings_file,
+        args.preprocessed_pdb_file,
+        args.encoder_model_path,
+        args.alignment_model_path,
+    ):
+        if not path.exists():
+            parser.error(f"File not found: {path}")
 
-    if not os.path.exists(args.encoder_model_path):
-        raise FileNotFoundError(
-            f"Encoder model path not found: {args.encoder_model_path}"
-        )
-    if not os.path.exists(args.alignment_model_path):
-        raise FileNotFoundError(
-            f"Alignment model path not found: {args.alignment_model_path}"
-        )
-
-    # set device
-    if args.device not in ["cpu", "cuda"]:
-        raise ValueError("Device must be 'cpu' or 'cuda'")
-    if args.device == "cuda" and not torch.cuda.is_available():
-        raise ValueError("CUDA is not available on this machine, use 'cpu' instead")
     device = torch.device(args.device)
 
-    # ensure data is in correct format
-    try:
-        with h5py.File(args.aas_embeddings_file, "r") as f:
-            print("Loading amino acid embeddings...")
-            amino_acid_embeddings = {k: f[k][()] for k in f.keys()}
-    except Exception as e:
-        raise ValueError(f"Error loading amino acid embeddings: {e}")
+    # load embeddings
+    with h5py.File(args.aas_embeddings_file, "r") as f:
+        print("Loading amino acid embeddings...")
+        aas_embeddings = {k: f[k][()] for k in f.keys()}
+    with h5py.File(args.desc_embeddings_file, "r") as f:
+        print("Loading description embeddings...")
+        desc_embeddings = {k: f[k][()] for k in f.keys()}
 
-    try:
-        with h5py.File(args.desc_embeddings_file, "r") as f:
-            print("Loading descriptor embeddings...")
-            desc_embeddings = {k: f[k][()] for k in f.keys()}
-    except Exception as e:
-        raise ValueError(f"Error loading descriptor embeddings: {e}")
+    # load PDB data and models
+    print("Loading preprocessed PDB data...")
+    pdb_data = torch.load(str(args.preprocessed_pdb_file), weights_only=False)
 
-    try:
-        print("Loading preprocessed PDB data...")
-        pdb_data = torch.load(args.preprocessed_pdb_file, weights_only=False)
-    except Exception as e:
-        raise ValueError(f"Error loading preprocessed PDB file: {e}")
+    encoder = CLASPEncoder(
+        in_channels=7,
+        hidden_channels=16,
+        final_embedding_size=512,
+        target_size=512,
+    ).to(device)
+    encoder.load_state_dict(torch.load(args.encoder_model_path, map_location=device))
+    encoder.eval()
 
-    # ensure models are in correct format
-    try:
-        pdb_encoder = CLASPEncoder(
-            in_channels=7, hidden_channels=16, final_embedding_size=512, target_size=512
-        ).to(device)
-        pdb_encoder.load_state_dict(
-            torch.load(args.encoder_model_path, map_location=device)
-        )
-        pdb_encoder.eval()
-    except Exception as e:
-        raise ValueError(f"Error loading encoder model: {e}")
-
-    try:
-        base_clip_model = create_clip_model_with_random_weights(
-            "ViT-B/32", device=device
-        )
-        alignment_model = CLASPAlignment(base_clip_model, embed_dim=512).to(device)
-        alignment_model.load_state_dict(
-            torch.load(args.alignment_model_path, map_location=device)
-        )
-        alignment_model.eval()
-    except Exception as e:
-        raise ValueError(f"Error loading alignment model: {e}")
+    base_clip = create_clip_model_with_random_weights("ViT-B/32", device=device)
+    aligner = CLASPAlignment(base_clip, embed_dim=512).to(device)
+    aligner.load_state_dict(torch.load(args.alignment_model_path, map_location=device))
+    aligner.eval()
 
     # compute and print quick similarity scores
+    print("Computing quick similarity scores...")
     compute_and_print_quick_similarity_scores(
         args.pdb_id,
         args.aas_id,
         args.desc_id,
         pdb_data,
-        amino_acid_embeddings,
+        aas_embeddings,
         desc_embeddings,
-        pdb_encoder,
-        alignment_model,
+        encoder,
+        aligner,
         device,
     )
+
+
+if __name__ == "__main__":
+    main()
