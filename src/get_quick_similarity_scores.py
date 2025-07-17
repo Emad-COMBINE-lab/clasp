@@ -61,25 +61,25 @@ def compute_and_print_quick_similarity_scores(
 
         # PDB <> AAS
         if pdb_proj_emb is not None and aas_proj_emb is not None:
-            sim_pdb_aas = pdb_proj_emb @ aas_proj_emb.T
+            sim_pdb_aas = pdb_proj_emb @ aas_proj_emb
             print(f"Similarity score (PDB <> AAS) for {pdb_id} and {aas_id}:")
-            print(sim_pdb_aas.cpu().numpy())
+            print(sim_pdb_aas.item())
         else:
             print("Similarity score (PDB <> AAS) not computed due to missing data.")
 
         # PDB <> DESC
         if pdb_proj_emb is not None and desc_proj_emb is not None:
-            sim_pdb_desc = pdb_proj_emb @ desc_proj_emb.T
+            sim_pdb_desc = pdb_proj_emb @ desc_proj_emb
             print(f"Similarity score (PDB <> DESC) for {pdb_id} and {desc_id}:")
-            print(sim_pdb_desc.cpu().numpy())
+            print(sim_pdb_desc.item())
         else:
             print("Similarity score (PDB <> DESC) not computed due to missing data.")
 
         # AAS <> DESC
         if aas_proj_emb is not None and desc_proj_emb is not None:
-            sim_aas_desc = aas_proj_emb @ desc_proj_emb.T
+            sim_aas_desc = aas_proj_emb @ desc_proj_emb
             print(f"Similarity score (AAS <> DESC) for {aas_id} and {desc_id}:")
-            print(sim_aas_desc.cpu().numpy())
+            print(sim_aas_desc.item())
         else:
             print("Similarity score (AAS <> DESC) not computed due to missing data.")
 
