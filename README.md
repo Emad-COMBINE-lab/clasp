@@ -74,6 +74,11 @@ After activating the environment, you need to manually install `torch-scatter` t
 pip install torch-scatter==2.1.2+pt26cu124 -f https://data.pyg.org/whl/torch-2.6.0+cu124.html
 ```
 
+On a CPU-only setup, you can use:
+
+```bash
+pip install torch-scatter==2.1.2 -f https://data.pyg.org/whl/torch-2.6.0+cpu.html
+```
 
 ## Documentation and usage
 
