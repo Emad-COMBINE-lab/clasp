@@ -182,7 +182,7 @@ dependencies:
       - certifi==2025.7.14
       - charset-normalizer==3.4.2
       - click==8.2.1
-      - clip==1.0
+      - git+https://github.com/openai/CLIP.git
       - colorama==0.4.6
       - colorlog==6.9.0
       - cpdb-protein==0.2.0
@@ -255,11 +255,8 @@ dependencies:
       - sympy==1.13.1
       - tokenizers==0.21.2
       - tomli==2.2.1
-      - torch==2.6.0+cu124
+      - torch==2.6.0
       - torch-geometric==2.6.1
-      - torch-scatter==2.1.2+pt26cu124
-      - torchaudio==2.6.0+cu124
-      - torchvision==0.21.0+cu124
       - tqdm==4.67.1
       - transformers==4.53.2
       - triton==3.2.0

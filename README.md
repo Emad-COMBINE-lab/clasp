@@ -3,9 +3,8 @@
 - Fill in missing links in the data prep docs
 - Write and test download script
 - Add citation to readme
-- Finish readme 
-- Make sure env set up is seamless
-- Test all code on MacOS
+- Make sure env set up is seamless (+ on cpu)
+- Test all code again on CPU and GPU
 - Get external lab member to review code and docs
 - License the code
 
@@ -49,7 +48,7 @@ CLASP/
 │   ├── training_clasp.md
 │   └── README.md
 ├── src/                   
-    ├── models/            # model definitions for CLASP
+|   ├── models/            # model definitions for CLASP
 │   ├── utils/             # utility functions for data processing and model training
 │   ├── compute_similarity_matrices.py
 │   ├── get_quick_similarity_scores.py
@@ -64,16 +63,15 @@ CLASP/
 
 ## Environment setup
 
-First, create the environment using the provided `environment.yml` file:
-
 ```bash
 conda env create -f environment.yml
+conda activate claspenv
 ```
 
-Then simply activate it:
+After activating the environment, you need to manually install `torch-scatter` to match your device. For example, we use the following command for a CUDA 12.4 compatible setup with PyTorch 2.6.0 (this command will very if you use a CPU-only setup or a different CUDA version):
 
 ```bash
-conda activate claspenv
+pip install torch-scatter==2.1.2+pt26cu124 -f https://data.pyg.org/whl/torch-2.6.0+cu124.html
 ```
 
 
