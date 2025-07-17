@@ -2,8 +2,6 @@
 
 This document explains how to train the CLASP model, which aligns protein structure, sequence, and description representations using a tri-modal contrastive loss using `src/train_clasp.py`.
 
----
-
 ## 1. Prerequisites
 
 Ensure you have the following input files and model components prepared. See [preprocessing documentation](data_preparation.md) for details on obtaining or generating these resources.
@@ -16,8 +14,6 @@ Ensure you have the following input files and model components prepared. See [pr
 | Description embeddings    | `.h5`    | HDF5 file with UniProt accessions as keys and 1024D vectors as values (e.g., BioGPT output) |
 | PDB structure graphs      | `.pt`    | Pickled Torch dictionary mapping `<upkb_ac>-<pdb_id>` to PyG `Data` objects                 |
 | Training/validation pairs | `.jsonl` | Each line contains a JSON object of the form `{"upkb_ac": ..., "pdb_id": ...}`              |
-
----
 
 ## 2. Running the training script
 
@@ -48,8 +44,6 @@ python train_clasp.py \
 | `--seed`                  | ✖        | Random seed (default: `42`)                                            |
 | `--device`                | ✖        | Device to use for training (`cpu` or `cuda`, default: auto-detect)     |
 
----
-
 ## 3. Data directory format
 
 The `--processed_data_dir` must contain the following files:
@@ -70,8 +64,6 @@ Each `.jsonl` file contains one JSON object per line:
 {"upkb_ac": "Q9FGK0", "pdb_id": "7ARB"}
 ```
 
----
-
 ## 4. Output
 
 The following files will be saved after training:
@@ -90,7 +82,6 @@ The following files will be saved after training:
 | `clasp_alignment.pt`   | Final alignment model (loaded from best checkpoint) |
 | `clasp_pdb_encoder.pt` | Final encoder model (loaded from best checkpoint)   |
 
----
 
 ## 5. Training details
 

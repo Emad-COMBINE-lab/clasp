@@ -2,9 +2,6 @@
 
 This section describes how to prepare the data for use with the CLASP framework, including embeddings for amino acid sequences, natural language descriptions, and PDB structures.
 
-
----
-
 ## Table of contents
 
 1. [Data download script](#data-download-script)
@@ -19,14 +16,10 @@ This section describes how to prepare the data for use with the CLASP framework,
 6. [Downloading our pre-trained models](#downloading-pre-trained-models)
 
 
----
-
 ## Data download script
 
 TBD
 
-
----
 
 ## Amino acid sequence embeddings
 
@@ -37,8 +30,6 @@ We use pre-trained amino acid sequence embeddings from ProtT5. You may use other
 * Values: 1024-dimensional embeddings (per protein)
 
 > [Download ProtT5 embeddings](?)
-
----
 
 ## Language description embeddings
 
@@ -51,8 +42,6 @@ You may also use your own language model embeddings. Just ensure they match the 
 * File type: `.h5`
 * Keys: UniProt accession numbers
 * Values: 1024-dimensional embeddings (per protein)
-
----
 
 ## PDB data
 
@@ -126,9 +115,6 @@ python preprocess_pdb_graphs.py \
 
 Note that each file in the directory must be named as `<pdb_id>.pdb` (e.g., `1IQ9.pdb` for PDB ID `1IQ9`). The script will use these files instead of downloading from the PDB.
 
-
----
-
 ## Data splitting and pairing
 
 We split our data into training (80%), validation (10%), and test (10%) sets. The split is done at the protein level, ensuring that no protein appears in both training and test sets. We computed this split accross 3 random seeds.
@@ -191,8 +177,6 @@ your_split_directory/
 ```
 
 This directory path will be used when running the CLASP training script.
-
----
 
 ## Downloading our pre-trained models
 

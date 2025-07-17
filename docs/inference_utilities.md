@@ -2,16 +2,12 @@
 
 This document describes how to run inference using pretrained CLASP models. The provided scripts enable computing similarity matrices, projecting embeddings, and ranking amino acids based on descriptions.
 
----
-
 ## Table of contents
 
 1. [Prerequisites](#1-prerequisites)
 2. [Computing similarity matrices and obtaining projected embeddings](#2-computing-similarity-matrices)
 3. [Calculating quick pairwise similarity scores](#3-quick-pairwise-similarity-scores)
 4. [Ranking amino acids by description (retrieval)](#4-ranking-amino-acids-by-description)
-
----
 
 ## 1. Prerequisites
 
@@ -26,8 +22,6 @@ Ensure you have the following input files and model components prepared. See [pr
 | Trained CLASPAlignment model | `.pt`  | `state_dict` of the alignment head                            |
 
 For models, you can use the pre-trained models provided in the [data preparation section](data_preparation.md#downloading-pre-trained-models) or train your own using the training script described in [training documentation](training_clasp.md).
-
----
 
 ## 2. Computing similarity matrices and obtaining projected embeddings
 
@@ -70,8 +64,6 @@ python compute_similarity_matrices.py \
 | `structure_to_description.pt` | `(Np, Nd)` | PDB-to-description similarity matrix |
 | `sequence_to_description.pt`  | `(Na, Nd)` | AAS-to-description similarity matrix |
 
----
-
 ## 3. Calculating quick pairwise similarity scores
 
 **Script:** `src/get_quick_similarity_scores.py`
@@ -100,8 +92,6 @@ PDB–AAS similarity (P12345-7ABC, P12345): 0.832465
 PDB–DESC similarity (P12345-7ABC, P12345): 0.789321
 AAS–DESC similarity (P12345, P12345): 0.866775
 ```
-
----
 
 ## 4. Ranking amino acids by description (retrieval)
 
