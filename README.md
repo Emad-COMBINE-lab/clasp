@@ -64,7 +64,10 @@ CLASP/
 
 ## Environment setup
 
-TBD
+```bash
+conda env create -f environment.yml
+conda activate claspenv
+```
 
 
 ## Documentation and usage
