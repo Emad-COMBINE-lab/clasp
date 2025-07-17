@@ -64,8 +64,15 @@ CLASP/
 
 ## Environment setup
 
+First, create the environment using the provided `environment.yml` file:
+
 ```bash
 conda env create -f environment.yml
+```
+
+Then simply activate it:
+
+```bash
 conda activate claspenv
 ```
 
