@@ -1,8 +1,10 @@
 # data
 data
-data_draft
-pdbs
-__pycache__
-.DS_Store
+
+# models
 final_models
 checkpoints
+
+# caches
+__pycache__
+.DS_Store
