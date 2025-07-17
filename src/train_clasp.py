@@ -77,7 +77,7 @@ def train_clasp(
     torch.manual_seed(seed)
 
     # hyperparameters
-    num_epochs = 2
+    num_epochs = 500
     batch_size = 8
     lr = 1e-3
     patience = 40

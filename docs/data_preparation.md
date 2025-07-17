@@ -1,17 +1,34 @@
-# Data Preprocessing
+# Data preparation and preprocessing
 
 This section describes how to prepare the data for use with the CLASP framework, including embeddings for amino acid sequences, natural language descriptions, and PDB structures.
 
+
 ---
 
-## Use Our Script to Download Training Data
+## Table of contents
+
+1. [Data download script](#data-download-script)
+2. [Amino acid sequence embeddings](#amino-acid-sequence-embeddings)
+3. [Language description embeddings](#language-description-embeddings)
+4. [PDB data](#pdb-data)
+    - [Option 1: Download our preprocessed PDB data](#option-1-download-preprocessed-pdb-data)
+    - [Option 2: Preprocess your own PDB data](#option-2-preprocess-your-own-pdb-data)
+5. [Data splitting and pairing](#data-splitting-and-pairing)
+    - [Using our precomputed splits and pairs](#using-our-precomputed-splits-and-pairs)
+    - [Creating your own splits and pairs](#creating-your-own-splits-and-pairs)
+6. [Downloading our pre-trained models](#downloading-pre-trained-models)
+
+
+---
+
+## Data download script
 
 TBD
 
 
 ---
 
-## Amino Acid Sequence Embeddings
+## Amino acid sequence embeddings
 
 We use pre-trained amino acid sequence embeddings from ProtT5. You may use other embeddings, but they must follow the same format:
 
@@ -23,7 +40,7 @@ We use pre-trained amino acid sequence embeddings from ProtT5. You may use other
 
 ---
 
-## Language Description Embeddings
+## Language description embeddings
 
 We use BioGPT embeddings of UniProt protein descriptions.
 
@@ -37,7 +54,7 @@ You may also use your own language model embeddings. Just ensure they match the 
 
 ---
 
-## PDB Data
+## PDB data
 
 CLASP embeds PDB data internally using a graph-based geometric encoder. The following use cases require access to PDB structure data:
 
@@ -45,7 +62,7 @@ CLASP embeds PDB data internally using a graph-based geometric encoder. The foll
 * Generating structure embeddings
 * Building cross-modal similarity matrices
 
-#### Option 1: Download Preprocessed PDB Data
+#### Option 1: Download our preprocessed PDB data
 
 If you wish to use our preprocessed PDB data directly:
 
@@ -53,11 +70,11 @@ If you wish to use our preprocessed PDB data directly:
 
 
 
-#### Option 2: Preprocess Your Own PDB Data
+#### Option 2: Preprocess your own PDB data
 
-To preprocess your own PDB structure data into graph embeddings compatible with CLASP, use the `pdb_preprocess.py` script included in this repository.
+To preprocess your own PDB structure data into graph embeddings compatible with CLASP, use the `src/preprocess_pdb_graphs.py` script included in this repository.
 
-**Step 1: Prepare the Mapping File**
+**Step 1: Prepare the mapping file**
 
 The script expects a `.jsonl` file where each line is a JSON object describing a protein, its UniProt accession code, and associated PDB IDs and chains. You can refer to our mapping file for the expected format, but here is an example for a single protein:
 
@@ -65,17 +82,17 @@ The script expects a `.jsonl` file where each line is a JSON object describing a
 {"upkb_ac": "P01426", "pdb": [{"id": "1IQ9", "chain": ["A"]}, {"id": "1NEA", "chain": ["A"]}]}
 ```
 
-If you wish to use our original mapping file, you can find it in the repository:
+If you wish to use our original mapping file, you can download it from the following link:
 
 >  [Download our mapping file](?)
 
 
-**Step 2: Run the Script**
+**Step 2: Run the preprocessing script**
 
 Basic usage:
 
 ```bash
-python pdb_preprocessing.py \
+python preprocess_pdb_graphs.py \
   --pdb_mapping_data path/to/your_mapping.jsonl \
   --output_file path/to/save/processed_pdb_data.pt
 ```
@@ -94,14 +111,13 @@ Notes:
 * This script uses [Graphein](https://graphein.ai/) to download and parse structures from the PDB. An internet connection is required unless using local files.
 * If you already have `.pdb` files downloaded, refer to the optional section below for using local files.
 
----
 
-#### Optional: Use Local PDB Files
+**Optional: Use local PDB files**
 
 If you have `.pdb` files downloaded locally, use the `--use_pdb_dir` flag and provide the directory path:
 
 ```bash
-python pdb_preprocessing.py \
+python preprocess_pdb_graphs.py \
   --pdb_mapping_data path/to/your_mapping.jsonl \
   --output_file path/to/save/processed_pdb_data.pt \
   --pdb_data_dir /path/to/local_pdbs \
@@ -113,13 +129,13 @@ Note that each file in the directory must be named as `<pdb_id>.pdb` (e.g., `1IQ
 
 ---
 
-## Data Splitting and Pairing
+## Data splitting and pairing
 
 We split our data into training (80%), validation (10%), and test (10%) sets. The split is done at the protein level, ensuring that no protein appears in both training and test sets. We computed this split accross 3 random seeds.
 
-We also preperared `(upkb_ac, pdb_id)` pairs for training, validation, and testing of structure-sequence and structure-description tasks (5 different set of pairs for training to include structural diversity as mentionned in th paper). For sequence-description tasks, we simply consider the paired sequence and description embeddings of the `upkb_ac`.
+We also preperared `(upkb_ac, pdb_id)` pairs for training, validation, and testing of structure-sequence and structure-description tasks (5 different set of pairs for training to include structural diversity). For sequence-description tasks, we simply consider the paired sequence and description embeddings of the `upkb_ac`.
 
-### Using Our Precomputed Splits and Pairs
+### Using our precomputed splits and pairs
 
 
 You can download our precomputed splits and corresponding pairs:
@@ -151,7 +167,7 @@ Where `pairs` subdirectory contains the pairs for training, validation, and test
 
 Note: the `split` files are not needed for any task or training but are provided for reference. 
 
-### Creating Your Own Splits and Pairs
+### Creating your own splits and pairs
 
 If you wish to create your own splits, ensure that you maintain the same structure and pairing logic. Each pair file should be a `.jsonl` file with each line containing a JSON object like. You can refer to our provided pairs for the expected format, but here is an example for a training pair:
 
@@ -175,3 +191,25 @@ your_split_directory/
 ```
 
 This directory path will be used when running the CLASP training script.
+
+---
+
+## Downloading our pre-trained models
+
+While you can train CLASP from scratch using `src/train_clasp.py` (see details for training [here](training_clasp.md)), we provide pre-trained models for convenience. You can download them here:
+
+> [Download pre-trained CLASP models](?)
+
+You will find the following files:
+
+```plaintext
+final_models/
+├── seed_26855092/
+  ├── clasp_alignment.pt
+  ├── clasp_pdb_encoder.pt
+├── seed_119540831/ (same structure as above)
+├── seed_686579303/ (same structure as above)
+```
+
+Where `clasp_alignment.pt` is the trained alignment model and `clasp_pdb_encoder.pt` is the trained PDB encoder model for each seed.
+
