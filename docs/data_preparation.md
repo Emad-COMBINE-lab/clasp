@@ -18,11 +18,6 @@ All datasets and embeddings needed to use CLASP are available for download from 
 6. [Downloading our pre-trained models](#downloading-pre-trained-models)
 
 
-## Data download script
-
-TBD
-
-
 ## Amino acid sequence embeddings
 
 We use pre-trained amino acid sequence embeddings from ProtT5. You may use other embeddings, but they must follow the same format:
