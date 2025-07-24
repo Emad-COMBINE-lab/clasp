@@ -1,8 +1,6 @@
 # Data preparation and preprocessing
 
-This section describes how to prepare the data for use with the CLASP framework, including embeddings for amino acid sequences, natural language descriptions, and PDB structures. 
-
-All datasets and embeddings needed to use CLASP are available for download from our [Internet Archive](https://archive.org/details/clasp_data).
+This section describes how to prepare the data for use with the CLASP framework, including embeddings for amino acid sequences, natural language descriptions, and PDB structures. All datasets, embeddings, and models used in CLASP are available for download from our [Internet Archive](https://archive.org/details/clasp_data).
 
 ## Table of contents
 
@@ -16,6 +14,39 @@ All datasets and embeddings needed to use CLASP are available for download from 
     - [Using our precomputed splits and pairs](#using-our-precomputed-splits-and-pairs)
     - [Creating your own splits and pairs](#creating-your-own-splits-and-pairs)
 6. [Downloading our pre-trained models](#downloading-pre-trained-models)
+
+
+## Data download script
+
+To simplify setup, we provide a convenience script: `scripts/download.sh`. This script downloads all datasets, embeddings, and model checkpoints required to run CLASP.
+
+From the root of the repository, make the script executable and run it:
+
+```bash
+chmod +x scripts/download.sh
+./scripts/download.sh
+```
+
+After running the script, the following directory structure will be created:
+
+```plaintext
+clasp_data/
+├── data/
+│   ├── processed_dataset/
+│   ├── aas_prott5_embeddings.h5
+│   ├── processed_pdb_data.pt
+│   ├── uniprot_desc_biogpt_embeddings.h5
+│   ├── upkb_pdb_mapping.jsonl
+├── final_models/
+```
+
+* The [`processed_dataset`](#using-our-precomputed-splits-and-pairs) directory contains data splits and pairings for training and evaluation.
+* The [`final_models`](#downloading-our-pre-trained-models) directory contains pre-trained CLASP model weights.
+
+Each of these directories is explained in detail in the sections below.
+
+
+
 
 
 ## Amino acid sequence embeddings
