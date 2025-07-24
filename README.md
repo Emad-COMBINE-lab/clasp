@@ -2,8 +2,6 @@
 
 - Upload data to Zenodo and fill in missing links in data preperation docs
 - Write an automatic download script once data published to Zenodo
-- Add citation to repository (.cff) and to readme
-- Get an external lab member to review the code and docs
 
 
 ----
@@ -91,5 +89,5 @@ This repository provides a set of utilities and scripts for preparing data, trai
 
 ## Citation
 
-TBD
+Coming soon
 
