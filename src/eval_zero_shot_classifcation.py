@@ -16,6 +16,8 @@ from sklearn.metrics import (
 import types
 import h5py
 from models import CLASPEncoder, CLASPAlignment
+import argparse
+from pathlib import Path
 
 
 class EvalPairDatasetPDB(Dataset):
@@ -141,13 +143,13 @@ def find_optimal_threshold(ground_truth, similarity_scores):
     )
 
 
-def evaluate_clip_model(model_name, clip_model, test_loader, threshold):
+def evaluate_clasp_model(model_name, clasp_model, test_loader, threshold):
     """
-    Evaluate a CLIP-based model at the given threshold.
+    Evaluate a CLASP model at the given threshold.
     """
-    clip_model.eval()
+    clasp_model.eval()
 
-    test_scores, test_labels = compute_similarity_scores(clip_model, test_loader)
+    test_scores, test_labels = compute_similarity_scores(clasp_model, test_loader)
     binary_predictions = (test_scores >= threshold).astype(int)
 
     accuracy = accuracy_score(test_labels, binary_predictions)
@@ -182,6 +184,19 @@ def load_classification_pairs(pairs_path):
             pair = json.loads(line.strip())
             pairs.append(((pair[0][0], pair[0][1]), pair[1]))
     return pairs
+
+
+def print_metrics(metric_names, metrics_by_task, task_name):
+    """
+    Print evaluation metrics for a given task.
+    """
+    print("\n" + "=" * 60)
+    print("CLASP ZERO-SHOT CLASSIFICATION RESULTS - " + task_name)
+    print("=" * 60)
+    for m in metric_names:
+        vals = np.array(metrics_by_task[task_name][m])
+        print(f"{m:15s}: {vals[0]:.4f}")
+    print()
 
 
 def evaluate_zero_shot_classification(
@@ -253,12 +268,13 @@ def evaluate_zero_shot_classification(
 
         val_scores, val_labels = compute_similarity_scores(clasp_alignment, val_loader)
         threshold = find_optimal_threshold(val_labels, val_scores)
-        pdb_aas_results = evaluate_clip_model(
+        pdb_aas_results = evaluate_clasp_model(
             "CLASP", clasp_alignment, test_loader, threshold
         )
 
         for m in metric_names:
             metrics_by_task["PDB-AAS"][m].append(pdb_aas_results[m])
+        print_metrics(metric_names, metrics_by_task, "PDB-AAS")
 
     # PDB-DESC CLASSIFICATION
     if pdb_desc:
@@ -297,12 +313,13 @@ def evaluate_zero_shot_classification(
 
         val_scores, val_labels = compute_similarity_scores(clasp_alignment, val_loader)
         threshold = find_optimal_threshold(val_labels, val_scores)
-        pdb_desc_results = evaluate_clip_model(
+        pdb_desc_results = evaluate_clasp_model(
             "CLASP", clasp_alignment, test_loader, threshold
         )
 
         for m in metric_names:
             metrics_by_task["PDB-DESC"][m].append(pdb_desc_results[m])
+        print_metrics(metric_names, metrics_by_task, "PDB-DESC")
 
     # AAS-DESC CLASSIFICATION
     if aas_desc:
@@ -339,148 +356,110 @@ def evaluate_zero_shot_classification(
 
         val_scores, val_labels = compute_similarity_scores(clasp_alignment, val_loader)
         threshold = find_optimal_threshold(val_labels, val_scores)
-        aas_desc_results = evaluate_clip_model(
+        aas_desc_results = evaluate_clasp_model(
             "CLASP", clasp_alignment, test_loader, threshold
         )
 
         for m in metric_names:
             metrics_by_task["AAS-DESC"][m].append(aas_desc_results[m])
-
-    # Print results across all tasks
-    print("\n" + "=" * 60)
-    print("CLASP ZERO-SHOT CLASSIFICATION RESULTS")
-    print("=" * 60)
-
-    for task in tasks:
-        print(f"\n--- {task} ---")
-        for m in metric_names:
-            vals = np.array(metrics_by_task[task][m])
-            mean, std = vals.mean(), vals.std()
-            print(f"{m:15s}: {mean:.4f} ± {std:.4f}")
-        print()
+        print_metrics(metric_names, metrics_by_task, "AAS-DESC")
 
     return metrics_by_task
 
 
 def main() -> None:
-    # parser = argparse.ArgumentParser(
-    #     description="Generate CLASP similarity matrices for structure, sequence, and description"
-    # )
-    # parser.add_argument(
-    #     "--aas_embeddings_file",
-    #     type=Path,
-    #     required=True,
-    #     help="HDF5 file with amino-acid embeddings",
-    # )
-    # parser.add_argument(
-    #     "--desc_embeddings_file",
-    #     type=Path,
-    #     required=True,
-    #     help="HDF5 file with description embeddings",
-    # )
-    # parser.add_argument(
-    #     "--preprocessed_pdb_file",
-    #     type=Path,
-    #     required=True,
-    #     help=".pt file with preprocessed PDB graphs",
-    # )
-    # parser.add_argument(
-    #     "--encoder_model_path",
-    #     type=Path,
-    #     required=True,
-    #     help="Path to saved CLASPEncoder state_dict",
-    # )
-    # parser.add_argument(
-    #     "--alignment_model_path",
-    #     type=Path,
-    #     required=True,
-    #     help="Path to saved CLASPAlignment state_dict",
-    # )
-    # parser.add_argument(
-    #     "--target_file",
-    #     type=Path,
-    #     required=True,
-    #     help="JSON file listing pdb_ids, aas_ids, desc_ids",
-    # )
-    # parser.add_argument(
-    #     "--structure_to_sequence_matrix",
-    #     type=bool,
-    #     default=True,
-    #     help="Whether to compute structure-to-sequence similarities",
-    # )
-    # parser.add_argument(
-    #     "--structure_to_description_matrix",
-    #     type=bool,
-    #     default=True,
-    #     help="Whether to compute structure-to-description similarities",
-    # )
-    # parser.add_argument(
-    #     "--sequence_to_description_matrix",
-    #     type=bool,
-    #     default=True,
-    #     help="Whether to compute sequence-to-description similarities",
-    # )
-    # parser.add_argument(
-    #     "--output_dir",
-    #     type=Path,
-    #     default=Path("output"),
-    #     help="Directory to save similarity matrices",
-    # )
-    # parser.add_argument(
-    #     "--device",
-    #     type=str,
-    #     default="cuda" if torch.cuda.is_available() else "cpu",
-    #     choices=["cpu", "cuda"],
-    #     help="Compute device",
-    # )
+    parser = argparse.ArgumentParser(
+        description="Evaluate CLASP model on zero-shot classification tasks"
+    )
+    parser.add_argument(
+        "--aas_embeddings_file",
+        type=Path,
+        required=True,
+        help="HDF5 file with amino-acid embeddings",
+    )
+    parser.add_argument(
+        "--desc_embeddings_file",
+        type=Path,
+        required=True,
+        help="HDF5 file with description embeddings",
+    )
+    parser.add_argument(
+        "--preprocessed_pdb_file",
+        type=Path,
+        required=True,
+        help=".pt file with preprocessed PDB graphs",
+    )
+    parser.add_argument(
+        "--encoder_model_path",
+        type=Path,
+        required=True,
+        help="Path to saved CLASPEncoder state_dict",
+    )
+    parser.add_argument(
+        "--alignment_model_path",
+        type=Path,
+        required=True,
+        help="Path to saved CLASPAlignment state_dict",
+    )
+    parser.add_argument(
+        "--balanced_pairs_dir",
+        type=Path,
+        required=True,
+        help="Directory containing balanced pair JSONL files",
+    )
+    parser.add_argument(
+        "--pdb_aas",
+        type=bool,
+        default=True,
+        help="Whether to evaluate PDB-AAS classification",
+    )
+    parser.add_argument(
+        "--pdb_desc",
+        type=bool,
+        default=True,
+        help="Whether to evaluate PDB-DESC classification",
+    )
+    parser.add_argument(
+        "--aas_desc",
+        type=bool,
+        default=True,
+        help="Whether to evaluate AAS-DESC classification",
+    )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="cuda" if torch.cuda.is_available() else "cpu",
+        choices=["cpu", "cuda"],
+        help="Compute device",
+    )
 
-    # args = parser.parse_args()
+    args = parser.parse_args()
 
-    # # validate inputs
-    # for p in (
-    #     args.aas_embeddings_file,
-    #     args.desc_embeddings_file,
-    #     args.preprocessed_pdb_file,
-    #     args.encoder_model_path,
-    #     args.alignment_model_path,
-    #     args.target_file,
-    # ):
-    #     if not p.exists():
-    #         parser.error(f"File not found: {p}")
+    # validate inputs
+    for p in (
+        args.aas_embeddings_file,
+        args.desc_embeddings_file,
+        args.preprocessed_pdb_file,
+        args.encoder_model_path,
+        args.alignment_model_path,
+        args.balanced_pairs_dir,
+    ):
+        if not p.exists():
+            parser.error(f"Path not found: {p}")
 
-    # device = torch.device(args.device)
-    aas_embeddings_file = "/projects/nbolo/CLIENT/clasp/data/amino_acid_embeddings.h5"
-    desc_embeddings_file = "/projects/nbolo/CLIENT/clasp/data/description_embeddings.h5"
-    preprocessed_pdb_file = "/projects/nbolo/CLIENT/clasp/data/processed_pdb_data.pt"
-
-    encoder_model_path = "/projects/nbolo/CLIENT/clasp/checkpoints/best_encoder.pt"
-    alignment_model_path = "/projects/nbolo/CLIENT/clasp/checkpoints/best_alignment.pt"
-
-    aas_desc_val_pairs_path = "/projects/nbolo/CLIENT/clasp/data/processed/seed_26855092/balanced_pairs/aas_desc_test_pairs.jsonl"
-    aas_desc_test_pairs_path = "/projects/nbolo/CLIENT/clasp/data/processed/seed_26855092/balanced_pairs/aas_desc_val_pairs.jsonl"
-    pdb_val_pairs_path = "/projects/nbolo/CLIENT/clasp/data/processed/seed_26855092/balanced_pairs/pdb_val_pairs.jsonl"
-    pdb_test_pairs_path = "/projects/nbolo/CLIENT/clasp/data/processed/seed_26855092/balanced_pairs/pdb_test_pairs.jsonl"
-
-    # load pairs
-    print("Loading classification pairs...")
-    aas_desc_val_pairs = load_classification_pairs(aas_desc_val_pairs_path)
-    aas_desc_test_pairs = load_classification_pairs(aas_desc_test_pairs_path)
-    pdb_val_pairs = load_classification_pairs(pdb_val_pairs_path)
-    pdb_test_pairs = load_classification_pairs(pdb_test_pairs_path)
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device(args.device)
 
     # load embeddings
-    with h5py.File(aas_embeddings_file, "r") as f:
+    with h5py.File(args.aas_embeddings_file, "r") as f:
         print("Loading amino acid embeddings...")
         aas_embeddings = {k: f[k][()] for k in f.keys()}
-    with h5py.File(desc_embeddings_file, "r") as f:
+    with h5py.File(args.desc_embeddings_file, "r") as f:
         print("Loading description embeddings...")
         desc_embeddings = {k: f[k][()] for k in f.keys()}
 
     # load PDB data and targets
     print("Loading preprocessed PDB data...")
-    pdb_data = torch.load(str(preprocessed_pdb_file), weights_only=False)
+    pdb_data = torch.load(str(args.preprocessed_pdb_file), weights_only=False)
 
     # load models
     encoder = CLASPEncoder(
@@ -489,12 +468,42 @@ def main() -> None:
         final_embedding_size=512,
         target_size=512,
     ).to(device)
-    encoder.load_state_dict(torch.load(encoder_model_path, map_location=device))
+    encoder.load_state_dict(torch.load(args.encoder_model_path, map_location=device))
     encoder.eval()
 
     alignment = CLASPAlignment(embed_dim=512).to(device)
-    alignment.load_state_dict(torch.load(alignment_model_path, map_location=device))
+    alignment.load_state_dict(
+        torch.load(args.alignment_model_path, map_location=device)
+    )
     alignment.eval()
+
+    # load classification pairs
+    aas_desc_val_pairs_path = args.balanced_pairs_dir / "aas_desc_val_pairs.jsonl"
+    aas_desc_test_pairs_path = args.balanced_pairs_dir / "aas_desc_test_pairs.jsonl"
+    pdb_val_pairs_path = args.balanced_pairs_dir / "pdb_val_pairs.jsonl"
+    pdb_test_pairs_path = args.balanced_pairs_dir / "pdb_test_pairs.jsonl"
+
+    if args.pdb_aas or args.pdb_desc:
+        if not pdb_val_pairs_path.exists():
+            parser.error(f"Path not found: {pdb_val_pairs_path}")
+        if not pdb_test_pairs_path.exists():
+            parser.error(f"Path not found: {pdb_test_pairs_path}")
+        pdb_val_pairs = load_classification_pairs(pdb_val_pairs_path)
+        pdb_test_pairs = load_classification_pairs(pdb_test_pairs_path)
+    else:
+        pdb_val_pairs = []
+        pdb_test_pairs = []
+
+    if args.aas_desc:
+        if not aas_desc_val_pairs_path.exists():
+            parser.error(f"Path not found: {aas_desc_val_pairs_path}")
+        if not aas_desc_test_pairs_path.exists():
+            parser.error(f"Path not found: {aas_desc_test_pairs_path}")
+        aas_desc_val_pairs = load_classification_pairs(aas_desc_val_pairs_path)
+        aas_desc_test_pairs = load_classification_pairs(aas_desc_test_pairs_path)
+    else:
+        aas_desc_val_pairs = []
+        aas_desc_test_pairs = []
 
     evaluate_zero_shot_classification(
         amino_acid_embeddings=aas_embeddings,
@@ -515,3 +524,18 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+"""
+sample command to run:
+python src/eval_zero_shot_classifcation.py \
+  --aas_embeddings_file       "/projects/nbolo/CLIENT/clasp/data/amino_acid_embeddings.h5" \
+  --desc_embeddings_file      "/projects/nbolo/CLIENT/clasp/data/description_embeddings.h5" \
+  --preprocessed_pdb_file     "/projects/nbolo/CLIENT/clasp/data/processed_pdb_data.pt" \
+  --encoder_model_path        "/projects/nbolo/CLIENT/clasp/checkpoints/best_encoder.pt" \
+  --alignment_model_path      "/projects/nbolo/CLIENT/clasp/checkpoints/best_alignment.pt" \
+  --balanced_pairs_dir        "/projects/nbolo/CLIENT/clasp/data/processed/seed_26855092/balanced_pairs" \
+  --pdb_aas                   True \
+  --pdb_desc                  True \
+  --aas_desc                  True \
+  --device                    cuda
+"""
