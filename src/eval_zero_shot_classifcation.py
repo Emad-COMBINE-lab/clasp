@@ -1,28 +1,33 @@
+import argparse
+import types
+from pathlib import Path
+from typing import Any, Dict, List, Tuple
+
+import h5py
 import numpy as np
 import torch
-from torch.utils.data import DataLoader
 from sklearn.metrics import (
-    precision_recall_curve,
-    f1_score,
     accuracy_score,
-    roc_curve,
     auc,
+    f1_score,
     matthews_corrcoef,
+    precision_recall_curve,
+    roc_curve,
 )
-import types
-import h5py
+from torch.utils.data import DataLoader
+
 from models import (
-    CLASPEncoder,
     CLASPAlignment,
-    EvalPairDatasetPDB,
+    CLASPEncoder,
     EvalPairDatasetAASxDESC,
+    EvalPairDatasetPDB,
 )
-import argparse
 from utils import load_labeled_pairs, pair_eval_collate_fn
-from pathlib import Path
 
 
-def compute_similarity_scores(model, test_loader):
+def compute_similarity_scores(
+    model: CLASPAlignment, test_loader: DataLoader
+) -> Tuple[np.ndarray, np.ndarray]:
     """
     Compute similarity scores and collect labels for all pairs in the test set.
     """
@@ -46,7 +51,9 @@ def compute_similarity_scores(model, test_loader):
     return np.array(all_scores), np.array(all_labels)
 
 
-def find_optimal_threshold(ground_truth, similarity_scores):
+def find_optimal_threshold(
+    ground_truth: np.ndarray, similarity_scores: np.ndarray
+) -> float:
     """
     Find the optimal threshold that maximizes F1 score.
     """
@@ -62,7 +69,12 @@ def find_optimal_threshold(ground_truth, similarity_scores):
     )
 
 
-def evaluate_clasp_model(model_name, clasp_model, test_loader, threshold):
+def evaluate_clasp_model(
+    model_name: str,
+    clasp_model: CLASPAlignment,
+    test_loader: DataLoader,
+    threshold: float,
+) -> Dict[str, Any]:
     """
     Evaluate a CLASP model at the given threshold.
     """
@@ -93,7 +105,11 @@ def evaluate_clasp_model(model_name, clasp_model, test_loader, threshold):
     }
 
 
-def print_metrics(metric_names, metrics_by_task, task_name):
+def print_metrics(
+    metric_names: List[str],
+    metrics_by_task: Dict[str, Dict[str, List[float]]],
+    task_name: str,
+) -> None:
     """
     Print evaluation metrics for a given task.
     """
@@ -107,20 +123,20 @@ def print_metrics(metric_names, metrics_by_task, task_name):
 
 
 def evaluate_zero_shot_classification(
-    amino_acid_embeddings,
-    description_embeddings,
-    pdb_data,
-    clasp_encoder,
-    clasp_alignment,
-    pdb_val_pairs,
-    pdb_test_pairs,
-    aas_desc_val_pairs,
-    aas_desc_test_pairs,
-    device,
-    pdb_aas=True,
-    pdb_desc=True,
-    aas_desc=True,
-):
+    amino_acid_embeddings: Dict[str, Any],
+    description_embeddings: Dict[str, Any],
+    pdb_data: Dict[str, torch.Tensor],
+    clasp_encoder: CLASPEncoder,
+    clasp_alignment: CLASPAlignment,
+    pdb_val_pairs: List[Tuple[str, str, int]],
+    pdb_test_pairs: List[Tuple[str, str, int]],
+    aas_desc_val_pairs: List[Tuple[str, str, int]],
+    aas_desc_test_pairs: List[Tuple[str, str, int]],
+    device: torch.device,
+    pdb_aas: bool = True,
+    pdb_desc: bool = True,
+    aas_desc: bool = True,
+) -> Dict[str, Dict[str, List[float]]]:
     """
     Evaluate CLASP model on three zero-shot classification tasks:
     1) PDB-AAS classification
@@ -270,8 +286,6 @@ def evaluate_zero_shot_classification(
         for m in metric_names:
             metrics_by_task["AAS-DESC"][m].append(aas_desc_results[m])
         print_metrics(metric_names, metrics_by_task, "AAS-DESC")
-
-    return metrics_by_task
 
 
 def main() -> None:
@@ -423,26 +437,11 @@ def main() -> None:
         aas_desc_val_pairs=aas_desc_val_pairs,
         aas_desc_test_pairs=aas_desc_test_pairs,
         device=device,
-        pdb_aas=True,
-        pdb_desc=True,
-        aas_desc=True,
+        pdb_aas=args.pdb_aas,
+        pdb_desc=args.pdb_desc,
+        aas_desc=args.aas_desc,
     )
 
 
 if __name__ == "__main__":
     main()
-
-"""
-sample command to run:
-python src/eval_zero_shot_classifcation.py \
-  --aas_embeddings_file       "/projects/nbolo/CLIENT/clasp/data/amino_acid_embeddings.h5" \
-  --desc_embeddings_file      "/projects/nbolo/CLIENT/clasp/data/description_embeddings.h5" \
-  --preprocessed_pdb_file     "/projects/nbolo/CLIENT/clasp/data/processed_pdb_data.pt" \
-  --encoder_model_path        "/projects/nbolo/CLIENT/clasp/checkpoints/best_encoder.pt" \
-  --alignment_model_path      "/projects/nbolo/CLIENT/clasp/checkpoints/best_alignment.pt" \
-  --balanced_pairs_dir        "/projects/nbolo/CLIENT/clasp/data/processed/seed_26855092/balanced_pairs" \
-  --pdb_aas                   True \
-  --pdb_desc                  True \
-  --aas_desc                  True \
-  --device                    cuda
-"""
