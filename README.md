@@ -8,7 +8,8 @@
 2. [Repository structure](#repository-structure)
 3. [Environment setup](#environment-setup)
 4. [Documentation and usage](#documentation-and-usage)
-5. [Citation](#citation)
+5. [Versions tested](#versions-tested)
+6. [Citation](#citation)
 
 ## Overview of the CLASP framework
 
@@ -78,6 +79,16 @@ This repository provides a set of utilities and scripts for preparing data, trai
 | [`rank_amino_acids_by_description.py`](src/rank_amino_acids_by_description.py)       | Ranks amino acid sequences based on a natural language query                                       | [`inference_utilities.md`](docs/inference_utilities.md) |
 | [`train_clasp.py`](src/train_clasp.py)                                               | Main training script for CLASP                                                                     | [`training_clasp.md`](docs/training_clasp.md)           |
 | [`eval_zero_shot_classification.py`](src/eval_zero_shot_classification.py)           | Evaluates a trained CLASP model on zero-shot classification tasks (PDB–AAS, PDB–DESC, AAS–DESC)    | [`evaluation.md`](docs/evaluation.md)                   |
+
+## Versions tested
+
+CLASP has been trained and tested with the following versions:
+
+- Python 3.10
+- PyTorch 2.6.0
+- Graphein 1.7
+
+For a full list of dependencies, please refer to the `environment.yml` file.
 
 ## Citation
 
