@@ -1,10 +1,6 @@
-import os
-import json
 import numpy as np
 import torch
-import matplotlib.pyplot as plt
-import matplotlib as mpl
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
 from sklearn.metrics import (
     precision_recall_curve,
     f1_score,
@@ -15,92 +11,15 @@ from sklearn.metrics import (
 )
 import types
 import h5py
-from models import CLASPEncoder, CLASPAlignment
+from models import (
+    CLASPEncoder,
+    CLASPAlignment,
+    EvalPairDatasetPDB,
+    EvalPairDatasetAASxDESC,
+)
 import argparse
+from utils import load_labeled_pairs, pair_eval_collate_fn
 from pathlib import Path
-
-
-class EvalPairDatasetPDB(Dataset):
-    """
-    Pair dataset for evaluating CLASP model with labeled PDB-X pairs.
-    """
-
-    def __init__(
-        self, labeled_pairs, aas_or_desc_embeddings, structure_encoder, pdb_data, device
-    ):
-        self.labeled_pairs = labeled_pairs
-        self.aas_or_desc_embeddings = aas_or_desc_embeddings
-        self.structure_encoder = structure_encoder
-        self.pdb_data = pdb_data
-        self.device = device
-
-    def __len__(self):
-        return len(self.labeled_pairs)
-
-    def __getitem__(self, idx):
-        (upkb_ac, pdb_id), label = self.labeled_pairs[idx]
-        graph_data = self.pdb_data.get(pdb_id, None)
-
-        raw_aas_or_desc_embedding = self.aas_or_desc_embeddings.get(upkb_ac, None)
-        if raw_aas_or_desc_embedding is None or graph_data is None:
-            return None
-
-        aas_or_desc_embedding = torch.tensor(
-            raw_aas_or_desc_embedding, dtype=torch.float32
-        )
-
-        with torch.no_grad():
-            structure_embedding = self.structure_encoder(graph_data.to(self.device))
-
-        return aas_or_desc_embedding.to(self.device), structure_embedding, label
-
-
-class EvalPairDatasetAASxDESC(Dataset):
-    """
-    Pair dataset for evaluating CLASP model with labeled AAS-DESC pairs.
-    """
-
-    def __init__(self, labeled_pairs, amino_acid_embeddings, desc_embeddings, device):
-        self.labeled_pairs = labeled_pairs
-        self.amino_acid_embeddings = amino_acid_embeddings
-        self.desc_embeddings = desc_embeddings
-        self.device = device
-
-    def __len__(self):
-        return len(self.labeled_pairs)
-
-    def __getitem__(self, idx):
-        (upkb_ac_aas, upkb_ac_desc), label = self.labeled_pairs[idx]
-
-        raw_aas_embedding = self.amino_acid_embeddings.get(upkb_ac_aas, None)
-        raw_desc_embedding = self.desc_embeddings.get(upkb_ac_desc, None)
-        if raw_aas_embedding is None or raw_desc_embedding is None:
-            return None
-
-        amino_ac_embedding = torch.tensor(raw_aas_embedding, dtype=torch.float32).to(
-            self.device
-        )
-        structure_embedding = torch.tensor(raw_desc_embedding, dtype=torch.float32).to(
-            self.device
-        )
-
-        return amino_ac_embedding, structure_embedding, label
-
-
-def pair_eval_collate_fn(batch):
-    """
-    Collate function to filter out None entries for evaluation pairs.
-    """
-    batch = [item for item in batch if item is not None]
-    if not batch:
-        return None
-
-    amino_embeddings, structure_embeddings, labels = zip(*batch)
-    return (
-        torch.stack(amino_embeddings),
-        torch.stack(structure_embeddings),
-        torch.tensor(labels, dtype=torch.long),
-    )
 
 
 def compute_similarity_scores(model, test_loader):
@@ -172,18 +91,6 @@ def evaluate_clasp_model(model_name, clasp_model, test_loader, threshold):
         "pr_auc": pr_auc,
         "mcc": mcc,
     }
-
-
-def load_classification_pairs(pairs_path):
-    """
-    Load classification pairs from a JSONL file.
-    """
-    pairs = []
-    with open(pairs_path, "r") as f:
-        for line in f:
-            pair = json.loads(line.strip())
-            pairs.append(((pair[0][0], pair[0][1]), pair[1]))
-    return pairs
 
 
 def print_metrics(metric_names, metrics_by_task, task_name):
@@ -488,8 +395,8 @@ def main() -> None:
             parser.error(f"Path not found: {pdb_val_pairs_path}")
         if not pdb_test_pairs_path.exists():
             parser.error(f"Path not found: {pdb_test_pairs_path}")
-        pdb_val_pairs = load_classification_pairs(pdb_val_pairs_path)
-        pdb_test_pairs = load_classification_pairs(pdb_test_pairs_path)
+        pdb_val_pairs = load_labeled_pairs(pdb_val_pairs_path)
+        pdb_test_pairs = load_labeled_pairs(pdb_test_pairs_path)
     else:
         pdb_val_pairs = []
         pdb_test_pairs = []
@@ -499,8 +406,8 @@ def main() -> None:
             parser.error(f"Path not found: {aas_desc_val_pairs_path}")
         if not aas_desc_test_pairs_path.exists():
             parser.error(f"Path not found: {aas_desc_test_pairs_path}")
-        aas_desc_val_pairs = load_classification_pairs(aas_desc_val_pairs_path)
-        aas_desc_test_pairs = load_classification_pairs(aas_desc_test_pairs_path)
+        aas_desc_val_pairs = load_labeled_pairs(aas_desc_val_pairs_path)
+        aas_desc_test_pairs = load_labeled_pairs(aas_desc_test_pairs_path)
     else:
         aas_desc_val_pairs = []
         aas_desc_test_pairs = []
