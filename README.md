@@ -9,7 +9,8 @@
 3. [Environment setup](#environment-setup)
 4. [Documentation and usage](#documentation-and-usage)
 5. [Versions tested](#versions-tested)
-6. [Citation](#citation)
+6. [Typical install and run time](#typical-install-and-run-time)
+7. [Citation](#citation)
 
 ## Overview of the CLASP framework
 
@@ -89,6 +90,11 @@ CLASP has been trained and tested with the following versions:
 - Graphein 1.7
 
 For a full list of dependencies, please refer to the `environment.yml` file.
+
+## Typical install and run time
+
+The typical installation time for the CLASP environment is approximately 5-10 minutes, depending on your internet connection and system performance. The training time for the CLASP model on a standard GPU (e.g., NVIDIA RTX 3090 with 32 CPU cores) is approximately 13.08 hours (∼2 minutes per epoch) when using the datasets and hyperparameters specified in the documentation. The training time may vary based on the specific hardware configuration, dataset size, and hyperparameters used.
+
 
 ## Citation
 
